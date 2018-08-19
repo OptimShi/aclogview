@@ -73,7 +73,6 @@ namespace aclogview
             }
         }
 
-
         private readonly List<string> filesToProcess = new List<string>();
         private int opCodeToSearchFor;
         private int filesProcessed;
@@ -101,7 +100,7 @@ namespace aclogview
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("DungeonID,WCID,Name,@Loc,Hits");
+                theFile.WriteLine("DungeonID,WCID,Name,Item Type Name,Item Type,@Loc,Hits");
         }
 
         private void SaveResultsToLogFile()
@@ -114,7 +113,9 @@ namespace aclogview
                     string cell = entry.Key.Substring(cellStart, 8);
                     uint iCell = uint.Parse(cell, NumberStyles.HexNumber);
                     uint dungeonID = iCell >> 16;
-                    theFile.Write(dungeonID.ToString("X4") + ",");
+                    // Because Excel is weird...
+                    // "=""8904"""
+                    theFile.Write("\"=\"\"" + dungeonID.ToString("X4") + "\"\"\",");
                     theFile.WriteLine(entry.Key + "," + entry.Value.ToString());
                 }
             }
@@ -224,7 +225,9 @@ namespace aclogview
         {
             using (StreamWriter theFile = new StreamWriter("D:\\Source\\Dungeon_Search_Progress.txt", false))
             {
-                theFile.WriteLine(progress.ToString() + " of " + total.ToString());
+                //Calculate percentage earlier in code
+                decimal percentage = (decimal)progress / total;
+                theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
                 theFile.WriteLine("FoundSpawns: " + FoundSpawns.Count.ToString());
             }
@@ -233,8 +236,8 @@ namespace aclogview
         // Gets a CSV string containing the info we are looking for!
         private string GetValueFromCreateObj(CM_Physics.CreateObject co) {
             string value = "";
-            //WCID,NAME,<@loc syntax>
-            value = co.wdesc._wcid.ToString() + ",\"" + co.wdesc._name + "\",\"" + GetLoc(co) + "\"";
+            // WCID,Name,Item Type Name,Item Type,<@loc syntax>
+            value = co.wdesc._wcid.ToString() + ",\"" + co.wdesc._name + "\",\"" + co.wdesc._type + "\"," + ((uint)co.wdesc._type).ToString() + ",\"" + GetLoc(co) + "\"";
             return value;
         }
 

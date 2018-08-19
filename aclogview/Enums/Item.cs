@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -38,7 +38,7 @@ public enum ITEM_TYPE {
     TYPE_FOOD = (1 << 5),
     TYPE_MONEY = (1 << 6),
     TYPE_MISC = (1 << 7),
-    TYPE_MISSILE_WEAPON = (1 << 8),
+    TYPE_MISSILE_WEAPON = (1 << 8), // 256
     TYPE_WEAPON = 0x101,
     TYPE_CONTAINER = (1 << 9),
     TYPE_LOCKABLE_MAGIC_TARGET = 0x280,
