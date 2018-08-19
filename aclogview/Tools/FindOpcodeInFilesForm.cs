@@ -96,12 +96,12 @@ namespace aclogview
         private List<uint> Dungeons = new List<uint>();
         private Dictionary<string, uint> FoundSpawns = new Dictionary<string, uint>();
 
-        private string logFileName = "D:\\Source\\PathOfTheBlind.csv";
+        private string logFileName = "D:\\Source\\DungeonSpawns.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("WCID,Name,@Loc,Hits");
+                theFile.WriteLine("DungeonID,WCID,Name,@Loc,Hits");
         }
 
         private void SaveResultsToLogFile()
@@ -110,6 +110,11 @@ namespace aclogview
             {
                 foreach (KeyValuePair<string, uint> entry in FoundSpawns)
                 {
+                    int cellStart = entry.Key.IndexOf("0x")+2;
+                    string cell = entry.Key.Substring(cellStart, 8);
+                    uint iCell = uint.Parse(cell, NumberStyles.HexNumber);
+                    uint dungeonID = iCell >> 16;
+                    theFile.Write(dungeonID.ToString("X4") + ",");
                     theFile.WriteLine(entry.Key + "," + entry.Value.ToString());
                 }
             }
@@ -118,10 +123,7 @@ namespace aclogview
         {
             dataGridView1.RowCount = 0;
             
-            Dungeons.Add(0x002A); // Path of the Blind
-            Dungeons.Add(0x004B); // Path of the Blind
-            Dungeons.Add(0x00E1); // Path of the Blind
-            Dungeons.Add(0x02CD); // Floating City for Testing
+            Dungeons.Add(0x002D); // Dark Design
             try
             {
                 btnStartSearch.Enabled = false;
@@ -201,8 +203,7 @@ namespace aclogview
         private void DoSearch()
         {
             int progress = 0;
-            // Parallel.ForEach(filesToProcess, (currentFile) =>
-            // string currentFile = "D:\\ACE\\Logs\\PCAP Part 1\\Floating-City\\pkt_2017-1-31_1485869055_log.pcap";
+            //string currentFile = "D:\\Asheron's Call\\Log Files\\PCAP Part 1\\012417-Atheria-Dungeon-all-3-levels\\pkt_2017-1-22_1485129682_log.pcap";
             foreach (string currentFile in filesToProcess)
             {
                 if (searchAborted || Disposing || IsDisposed)
@@ -233,7 +234,7 @@ namespace aclogview
         private string GetValueFromCreateObj(CM_Physics.CreateObject co) {
             string value = "";
             //WCID,NAME,<@loc syntax>
-            value = co.wdesc._wcid.ToString() + "," + co.wdesc._name + ",\"" + GetLoc(co) + "\"";
+            value = co.wdesc._wcid.ToString() + ",\"" + co.wdesc._name + "\",\"" + GetLoc(co) + "\"";
             return value;
         }
 
@@ -243,9 +244,10 @@ namespace aclogview
             var pos = co.physicsdesc.pos;
             string objCell = "0x" + pos.objcell_id.ToString("X8");
 
+            string outputFormat = "";
             // @loc 0x00070131 [64.9584 -44.8534 0.66] 0 0 0 -1
-            loc = objCell + " [" + pos.frame.m_fOrigin.x.ToString() + " " + pos.frame.m_fOrigin.y.ToString() + " " + pos.frame.m_fOrigin.z.ToString() + "] ";
-            loc += pos.frame.qx.ToString() + " " + pos.frame.qy.ToString() + " " + pos.frame.qz.ToString() + " " + pos.frame.qw.ToString();
+            loc = objCell + " [" + Math.Round(pos.frame.m_fOrigin.x,6).ToString(outputFormat) + " " + Math.Round(pos.frame.m_fOrigin.y,6).ToString(outputFormat) + " " + Math.Round(pos.frame.m_fOrigin.z,6).ToString(outputFormat) + "] ";
+            loc += Math.Round(pos.frame.qx,6).ToString(outputFormat) + " " + Math.Round(pos.frame.qy,6).ToString(outputFormat) + " " + Math.Round(pos.frame.qz,6).ToString(outputFormat) + " " + Math.Round(pos.frame.qw,6).ToString(outputFormat);
 
             return loc;
         }
@@ -253,8 +255,7 @@ namespace aclogview
         private bool IsInDungeon(CM_Physics.CreateObject co)
         {
             uint fullCell = co.physicsdesc.pos.objcell_id;
-            uint objCell = fullCell >> 16;
-            if (Dungeons.IndexOf(objCell) != -1)
+            if ((fullCell & 0x100) != 0)
                 return true;
             else
                 return false;
