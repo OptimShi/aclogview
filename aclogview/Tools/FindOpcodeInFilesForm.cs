@@ -296,14 +296,22 @@ namespace aclogview
                         uint wcid = parsed.wdesc._wcid;
 
                         // item is not a player, is a creature and is in our dungeon...
-                        if (wcid > 1 && IsInDungeon(parsed))
+                        if (parsed.wdesc._type != ITEM_TYPE.TYPE_UNDEF && wcid != 1 && wcid != 21 && IsInDungeon(parsed))
                         {
                             // string index = GetValueFromCreateObj(parsed);
                             uint key = parsed.object_id;
-                            items.Add(key, parsed);
+                            // items.Add(key, parsed);
+
+                            uint objId = parsed.object_id;
+                            string value = GetValueFromCreateObj(parsed);
+
+                            if (FoundSpawns.ContainsKey(value))
+                                FoundSpawns[value]++;
+                            else
+                                FoundSpawns.Add(value, 1);
                         }
                     }
-
+                    /*
                     if (messageCode == 0xF755) // Effects_PlayScriptType 
                     {
                         var parsed = CM_Physics.PlayScriptType.read(messageDataReader);
@@ -321,6 +329,7 @@ namespace aclogview
                             }
                         }
                     }
+                    */
                 }
                 catch
                 {
