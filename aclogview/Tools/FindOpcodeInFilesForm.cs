@@ -92,30 +92,22 @@ namespace aclogview
         private readonly ConcurrentDictionary<string, int> specialOutputHits = new ConcurrentDictionary<string, int>();
         private readonly ConcurrentQueue<string> specialOutputHitsQueue = new ConcurrentQueue<string>();
 
-        private List<uint> Dungeons = new List<uint>();
-        private Dictionary<string, uint> FoundSpawns = new Dictionary<string, uint>();
+        private Dictionary<string, uint> FoundWields = new Dictionary<string, uint>();
 
-        private string logFileName = "D:\\Source\\DungeonSpawns.csv";
+        private string logFileName = "D:\\Source\\WieldedItems.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("DungeonID,WCID,Name,Item Type Name,Item Type,@Loc,Hits");
+                theFile.WriteLine("WCID,Name,Wield WCID,Wield Name,Hits");
         }
 
         private void SaveResultsToLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                foreach (KeyValuePair<string, uint> entry in FoundSpawns)
+                foreach (KeyValuePair<string, uint> entry in FoundWields)
                 {
-                    int cellStart = entry.Key.IndexOf("0x")+2;
-                    string cell = entry.Key.Substring(cellStart, 8);
-                    uint iCell = uint.Parse(cell, NumberStyles.HexNumber);
-                    uint dungeonID = iCell >> 16;
-                    // Because Excel is weird...
-                    // "=""8904"""
-                    theFile.Write("\"=\"\"" + dungeonID.ToString("X4") + "\"\"\",");
                     theFile.WriteLine(entry.Key + "," + entry.Value.ToString());
                 }
             }
@@ -123,8 +115,7 @@ namespace aclogview
         private void btnStartSearch_Click(object sender, EventArgs e)
         {
             dataGridView1.RowCount = 0;
-            
-            Dungeons.Add(0x002D); // Dark Design
+
             try
             {
                 btnStartSearch.Enabled = false;
@@ -204,7 +195,7 @@ namespace aclogview
         private void DoSearch()
         {
             int progress = 0;
-            //string currentFile = "D:\\Asheron's Call\\Log Files\\PCAP Part 1\\012417-Atheria-Dungeon-all-3-levels\\pkt_2017-1-22_1485129682_log.pcap";
+            //string currentFile = "D:\\ACE\\Logs\\PCAP Part 1\\Loddy-LugianExcavations\\Loddy-LugianExcavations.pcap";
             foreach (string currentFile in filesToProcess)
             {
                 if (searchAborted || Disposing || IsDisposed)
@@ -223,45 +214,22 @@ namespace aclogview
 
         private void LogProgress(int progress, int total, string filename)
         {
-            using (StreamWriter theFile = new StreamWriter("D:\\Source\\Dungeon_Search_Progress.txt", false))
+            using (StreamWriter theFile = new StreamWriter("D:\\Source\\aclogview_progress.txt", false))
             {
                 //Calculate percentage earlier in code
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("FoundSpawns: " + FoundSpawns.Count.ToString());
+                theFile.WriteLine("FoundWields: " + FoundWields.Count.ToString());
             }
         }
 
         // Gets a CSV string containing the info we are looking for!
-        private string GetValueFromCreateObj(CM_Physics.CreateObject co) {
+        private string GetValueFromCreateObj(CM_Physics.CreateObject item, CM_Physics.CreateObject wielder) {
             string value = "";
-            // WCID,Name,Item Type Name,Item Type,<@loc syntax>
-            value = co.wdesc._wcid.ToString() + ",\"" + co.wdesc._name + "\",\"" + co.wdesc._type + "\"," + ((uint)co.wdesc._type).ToString() + ",\"" + GetLoc(co) + "\"";
+            // WCID,Name,Wield WCID,Wield Name
+            value = wielder.wdesc._wcid.ToString() + ",\"" + wielder.wdesc._name + "\",\"" + item.wdesc._wcid.ToString() + ",\"" + item.wdesc._name + "\"";
             return value;
-        }
-
-        private string GetLoc(CM_Physics.CreateObject co)
-        {
-            string loc;
-            var pos = co.physicsdesc.pos;
-            string objCell = "0x" + pos.objcell_id.ToString("X8");
-
-            string outputFormat = "";
-            // @loc 0x00070131 [64.9584 -44.8534 0.66] 0 0 0 -1
-            loc = objCell + " [" + Math.Round(pos.frame.m_fOrigin.x,6).ToString(outputFormat) + " " + Math.Round(pos.frame.m_fOrigin.y,6).ToString(outputFormat) + " " + Math.Round(pos.frame.m_fOrigin.z,6).ToString(outputFormat) + "] ";
-            loc += Math.Round(pos.frame.qx,6).ToString(outputFormat) + " " + Math.Round(pos.frame.qy,6).ToString(outputFormat) + " " + Math.Round(pos.frame.qz,6).ToString(outputFormat) + " " + Math.Round(pos.frame.qw,6).ToString(outputFormat);
-
-            return loc;
-        }
-
-        private bool IsInDungeon(CM_Physics.CreateObject co)
-        {
-            uint fullCell = co.physicsdesc.pos.objcell_id;
-            if ((fullCell & 0x100) != 0)
-                return true;
-            else
-                return false;
         }
 
         private void ProcessFile(string fileName)
@@ -298,41 +266,30 @@ namespace aclogview
                         var parsed = CM_Physics.CreateObject.read(messageDataReader);
                         uint wcid = parsed.wdesc._wcid;
 
-                        // item is not a player, is a creature and is in our dungeon...
-                        if (parsed.wdesc._type != ITEM_TYPE.TYPE_UNDEF && wcid != 1 && wcid != 21 && IsInDungeon(parsed))
+                        // item is not a player, is a creature...
+                        if (parsed.wdesc._type != ITEM_TYPE.TYPE_UNDEF && wcid != 1 && wcid != 21)
                         {
                             // string index = GetValueFromCreateObj(parsed);
                             uint key = parsed.object_id;
-                            // items.Add(key, parsed);
+                            var newObj = parsed.wdesc;
+                            // item is being wielded
+                            if ((newObj.header & (uint)CM_Physics.PublicWeenieDesc.PublicWeenieDescPackHeader.PWD_Packed_WielderID) != 0)
+                            {
+                                // find the wielder
+                                uint wielderId = newObj._wielderID;
+                                if (items.ContainsKey(wielderId))
+                                {
+                                    string value = GetValueFromCreateObj(parsed, items[wielderId]);
 
-                            uint objId = parsed.object_id;
-                            string value = GetValueFromCreateObj(parsed);
-
-                            if (FoundSpawns.ContainsKey(value))
-                                FoundSpawns[value]++;
-                            else
-                                FoundSpawns.Add(value, 1);
-                        }
-                    }
-                    /*
-                    if (messageCode == 0xF755) // Effects_PlayScriptType 
-                    {
-                        var parsed = CM_Physics.PlayScriptType.read(messageDataReader);
-                        if(parsed.script_type == PScriptType.PS_Create)
-                        {
-                            uint objId = parsed.object_id;
-                            if (items.ContainsKey(objId)) {
-                                var createObj = items[objId];
-                                string value = GetValueFromCreateObj(createObj);
-
-                                if (FoundSpawns.ContainsKey(value))
-                                    FoundSpawns[value]++;
-                                else
-                                    FoundSpawns.Add(value, 1);
+                                    if (FoundWields.ContainsKey(value))
+                                        FoundWields[value]++;
+                                    else
+                                        FoundWields.Add(value, 1);
+                                }
                             }
+                            items.Add(key, parsed);
                         }
                     }
-                    */
                 }
                 catch
                 {
