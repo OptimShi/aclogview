@@ -93,13 +93,14 @@ namespace aclogview
         private readonly ConcurrentQueue<string> specialOutputHitsQueue = new ConcurrentQueue<string>();
 
         private Dictionary<string, uint> FoundWields = new Dictionary<string, uint>();
+        private Dictionary<string, string> FoundWieldsLogs = new Dictionary<string, string>();
 
         private string logFileName = "D:\\Source\\WieldedItems.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("WCID,Name,Wield WCID,Wield Name,Hits");
+                theFile.WriteLine("WCID,Name,Wield WCID,Wield Name,Hits,Log");
         }
 
         private void SaveResultsToLogFile()
@@ -108,7 +109,12 @@ namespace aclogview
             {
                 foreach (KeyValuePair<string, uint> entry in FoundWields)
                 {
-                    theFile.WriteLine(entry.Key + "," + entry.Value.ToString());
+                    theFile.Write(entry.Key + "," + entry.Value.ToString());
+                    if (FoundWieldsLogs.ContainsKey(entry.Key))
+                    {
+                        theFile.Write(",\"" + FoundWieldsLogs[entry.Key] + "\"");
+                    }
+                    theFile.WriteLine();
                 }
             }
         }
@@ -195,7 +201,7 @@ namespace aclogview
         private void DoSearch()
         {
             int progress = 0;
-            //string currentFile = "D:\\ACE\\Logs\\PCAP Part 1\\Loddy-LugianExcavations\\Loddy-LugianExcavations.pcap";
+            // filesToProcess.Clear(); filesToProcess.Add("d:\\Asheron's Call\\Log Files\\PCAP Part 1\\Julianna_pcap\\pkt_2017-1-30_1485830024_log.pcap");
             foreach (string currentFile in filesToProcess)
             {
                 if (searchAborted || Disposing || IsDisposed)
@@ -228,7 +234,7 @@ namespace aclogview
         private string GetValueFromCreateObj(CM_Physics.CreateObject item, CM_Physics.CreateObject wielder) {
             string value = "";
             // WCID,Name,Wield WCID,Wield Name
-            value = wielder.wdesc._wcid.ToString() + ",\"" + wielder.wdesc._name + "\",\"" + item.wdesc._wcid.ToString() + ",\"" + item.wdesc._name + "\"";
+            value = wielder.wdesc._wcid.ToString() + ",\"" + wielder.wdesc._name + "\"," + item.wdesc._wcid.ToString() + ",\"" + item.wdesc._name + "\"";
             return value;
         }
 
@@ -284,10 +290,19 @@ namespace aclogview
                                     if (FoundWields.ContainsKey(value))
                                         FoundWields[value]++;
                                     else
+                                    {
+                                        FoundWieldsLogs.Add(value, fileName);
                                         FoundWields.Add(value, 1);
+                                    }
                                 }
                             }
-                            items.Add(key, parsed);
+                            else if(newObj._type == ITEM_TYPE.TYPE_CREATURE)
+                            {
+                                if (items.ContainsKey(key))
+                                    items[key] = parsed;
+                                else
+                                    items.Add(key, parsed);
+                            }
                         }
                     }
                 }
