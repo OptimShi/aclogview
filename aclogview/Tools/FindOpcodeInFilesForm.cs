@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -17,6 +17,35 @@ namespace aclogview
 {
     public partial class FindOpcodeInFilesForm : Form
     {
+        public Dictionary<uint, CM_Magic.StatMod> Spells = new Dictionary<uint, CM_Magic.StatMod>();
+
+        private string logFileName = "D:\\Source\\Spells.csv";
+
+        private void ResetLogFile()
+        {
+            using (StreamWriter theFile = new StreamWriter(logFileName, false))
+                theFile.WriteLine("SpellID,Type,Key,Val");
+        }
+
+        private void SaveResultsToLogFile()
+        {
+            ResetLogFile();
+
+            using (StreamWriter theFile = new StreamWriter(logFileName, true))
+            {
+                foreach (KeyValuePair<uint, CM_Magic.StatMod> entry in Spells)
+                {
+                    theFile.Write(entry.Key.ToString() + ",");
+                    theFile.Write(entry.Value.type.ToString() + ",");
+                    theFile.Write(entry.Value.key.ToString() + ",");
+                    theFile.Write(entry.Value.val.ToString() + ",");
+
+                    theFile.WriteLine();
+                    //theFile.WriteLine(entry.Key + "," + entry.Value.ToString());
+                }
+            }
+        }
+
         public FindOpcodeInFilesForm()
         {
             InitializeComponent();
@@ -166,17 +195,36 @@ namespace aclogview
 
         private void DoSearch()
         {
-            Parallel.ForEach(filesToProcess, (currentFile) =>
+            int progress = 0;
+            //Parallel.ForEach(filesToProcess, (currentFile) =>
+            foreach (string currentFile in filesToProcess)
             {
                 if (searchAborted || Disposing || IsDisposed)
                     return;
 
+                progress++;
+                LogProgress(progress, filesToProcess.Count, currentFile);
+
                 try
                 {
                     ProcessFile(currentFile);
+
+                    SaveResultsToLogFile();
                 }
                 catch { }
-            });
+            }
+        }
+
+        private void LogProgress(int progress, int total, string filename)
+        {
+            using (StreamWriter theFile = new StreamWriter("D:\\Source\\Spells_Progress.txt", false))
+            {
+                //Calculate percentage earlier in code
+                decimal percentage = (decimal)progress / total;
+                theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
+                theFile.WriteLine(filename);
+                theFile.WriteLine("Spells: " + Spells.Count.ToString());
+            }
         }
 
         private void ProcessFile(string fileName)
@@ -209,25 +257,28 @@ namespace aclogview
                     if (record.data.Length <= 4)
                         continue;
 
-                    //BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data));
+                    BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data));
 
-                    //var messageCode = messageDataReader.ReadUInt32();
+                    var messageCode = messageDataReader.ReadUInt32();
 
-                    /*if (messageCode == 0x02BB) // Creature Message
+                    if (messageCode == 0xF7B0) // Update Enchantment
                     {
-                        var parsed = CM_Communication.HearSpeech.read(messageDataReader);
+                        var character = messageDataReader.ReadUInt32(); // Character
+                        var sequence = messageDataReader.ReadUInt32(); // Sequence
+                        var _event = messageDataReader.ReadUInt32(); // Event
 
-                        //if (parsed.ChatMessageType != 0x0C)
-                        //    continue;
+                        if (_event == 0x02C2){ // UpdateEnchantment
 
-                        var output = parsed.ChatMessageType.ToString("X4") + " " + parsed.MessageText;
+                            CM_Magic.UpdateEnchantment parsed = CM_Magic.UpdateEnchantment.read(messageDataReader);
 
-                        if (!specialOutputHits.ContainsKey(output))
-                        {
-                            if (specialOutputHits.TryAdd(output, 0))
-                                specialOutputHitsQueue.Enqueue(output);
+                            uint spellId = parsed.enchant.eid.i_spell_id;
+                            if (!Spells.ContainsKey(spellId))
+                            {
+                                Spells.Add(spellId, parsed.enchant.smod);
+                            }
+
                         }
-                    }*/
+                    }
 
                     /*if (messageCode == 0xF745) // Create Object
                     {
