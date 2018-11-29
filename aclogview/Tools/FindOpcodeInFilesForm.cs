@@ -92,36 +92,36 @@ namespace aclogview
         private readonly ConcurrentDictionary<string, int> specialOutputHits = new ConcurrentDictionary<string, int>();
         private readonly ConcurrentQueue<string> specialOutputHitsQueue = new ConcurrentQueue<string>();
 
-        private Dictionary<string, uint> FoundWields = new Dictionary<string, uint>();
-        private Dictionary<string, string> FoundWieldsLogs = new Dictionary<string, string>();
+        //private Dictionary<MaterialType, uint> Materials = new Dictionary<MaterialType, uint>();
+        // key is WCID+","+Name
+        // val is a dictionary of key: MaterialTypes and value: hits
+        private Dictionary<string, Dictionary<uint, uint>> Weenies = new Dictionary<string, Dictionary<uint, uint>>();
 
-        private string logFileName = "D:\\Source\\WieldedItems.csv";
+        private string logFileName = "D:\\Source\\Materials.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("WCID,Name,Wield WCID,Wield Name,Hits,Log");
+                theFile.WriteLine("WCID,Name,Material,Hits");
         }
 
         private void SaveResultsToLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                foreach (KeyValuePair<string, uint> entry in FoundWields)
-                {
-                    theFile.Write(entry.Key + "," + entry.Value.ToString());
-                    if (FoundWieldsLogs.ContainsKey(entry.Key))
-                    {
-                        theFile.Write(",\"" + FoundWieldsLogs[entry.Key] + "\"");
+                foreach (KeyValuePair<string, Dictionary<uint, uint>> entry in Weenies)
+                    foreach (KeyValuePair<uint, uint> mat in entry.Value) {
+                        theFile.Write(entry.Key + ",");
+                        MaterialType matType = (MaterialType)mat.Key;
+                        theFile.Write(matType.ToString() + "," + mat.Value.ToString());
+                        theFile.WriteLine();
                     }
-                    theFile.WriteLine();
-                }
             }
         }
+
         private void btnStartSearch_Click(object sender, EventArgs e)
         {
             dataGridView1.RowCount = 0;
-
             try
             {
                 btnStartSearch.Enabled = false;
@@ -226,7 +226,7 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("FoundWields: " + FoundWields.Count.ToString());
+                theFile.WriteLine("Weenies: " + Weenies.Count.ToString());
             }
         }
 
@@ -270,38 +270,34 @@ namespace aclogview
                     if (messageCode == 0xF745) // Create Object
                     {
                         var parsed = CM_Physics.CreateObject.read(messageDataReader);
-                        uint wcid = parsed.wdesc._wcid;
 
-                        // item is not a player, is a creature...
-                        if (parsed.wdesc._type != ITEM_TYPE.TYPE_UNDEF && wcid != 1 && wcid != 21)
+                        // if it has PWD_Packed_MaterialType
+                        //if ((parsed.wdesc.header & unchecked(2147483648)) != 0)
+                        if(parsed.wdesc._material_type != MaterialType.Undef_MaterialType)
                         {
-                            // string index = GetValueFromCreateObj(parsed);
-                            uint key = parsed.object_id;
-                            var newObj = parsed.wdesc;
-                            // item is being wielded
-                            if ((newObj.header & (uint)CM_Physics.PublicWeenieDesc.PublicWeenieDescPackHeader.PWD_Packed_WielderID) != 0)
+                            uint wcid = parsed.wdesc._wcid;
+                            string name = parsed.wdesc._name.m_buffer;
+                            string weenieKey = wcid + ",\"" + name + "\"";
+                            if(parsed.wdesc._material_type != MaterialType.Undef_MaterialType)
                             {
-                                // find the wielder
-                                uint wielderId = newObj._wielderID;
-                                if (items.ContainsKey(wielderId))
+                                if (!Weenies.ContainsKey(weenieKey))
                                 {
-                                    string value = GetValueFromCreateObj(parsed, items[wielderId]);
-
-                                    if (FoundWields.ContainsKey(value))
-                                        FoundWields[value]++;
-                                    else
-                                    {
-                                        FoundWieldsLogs.Add(value, fileName);
-                                        FoundWields.Add(value, 1);
-                                    }
+                                    Dictionary<uint, uint> NewMatList = new Dictionary<uint, uint>();
+                                    Weenies.Add(weenieKey, NewMatList);
                                 }
-                            }
-                            else if(newObj._type == ITEM_TYPE.TYPE_CREATURE)
-                            {
-                                if (items.ContainsKey(key))
-                                    items[key] = parsed;
+
+                                uint matType = (uint)parsed.wdesc._material_type;
+                                Dictionary<uint, uint> MatList = Weenies[weenieKey];
+                                if (MatList.ContainsKey(matType))
+                                {
+                                    MatList[matType]++;
+                                }
                                 else
-                                    items.Add(key, parsed);
+                                {
+                                    MatList.Add(matType, 1);
+                                }
+
+                                Weenies[weenieKey] = MatList;
                             }
                         }
                     }
