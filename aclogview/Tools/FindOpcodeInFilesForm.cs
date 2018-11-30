@@ -97,23 +97,23 @@ namespace aclogview
         // val is MessageText+","+ChatMessageType of text
         //private Dictionary<string, string> Speech = new Dictionary<string, string>();
 
-        // key is [Name of the speaker]+","+MessageText+","+[ChatMessageType of text]
-        // val is the log filename
-        private Dictionary<string, string> Speech = new Dictionary<string, string>();
+        // key is [Name of Container] + "," + WCID + "," + [LootName]
+        // val is the number of hits
+        private Dictionary<string, uint> Loot = new Dictionary<string, uint>();
 
-        private string logFileName = "D:\\Source\\Speech.csv";
+        private string logFileName = "D:\\Source\\Loot.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("WCID,Name,Text,Type");
+                theFile.WriteLine("Container WCID, Container Name,Loot WCID,Loot Name,Hits");
         }
 
         private void SaveResultsToLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                foreach (KeyValuePair<string, string> entry in Speech) {
+                foreach (KeyValuePair<string, uint> entry in Loot) {
                     theFile.Write(entry.Key + ",");
                     theFile.Write(entry.Value);
                     theFile.WriteLine();
@@ -228,7 +228,7 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("Speech Entries: " + Speech.Count.ToString());
+                theFile.WriteLine("Loot Entries: " + Loot.Count.ToString());
             }
         }
 
@@ -252,6 +252,11 @@ namespace aclogview
             string myPath = "D:\\Asheron's Call\\Log Files\\";
             string logFilenameVal = fileName.Replace(myPath, "");
 
+            // Key is the ObjectID
+            // Value is WCID + "," + Name
+            Dictionary<uint, string> Weenies = new Dictionary<uint, string>();
+            Dictionary<uint, uint> WCIDs = new Dictionary<uint, uint>(); // key is ObjectID, Value is WCID
+
             foreach (PacketRecord record in records)
             {
                 if (searchAborted || Disposing || IsDisposed)
@@ -272,71 +277,48 @@ namespace aclogview
 
                     PacketOpcode opcode = Util.readOpcode(messageDataReader);
 
-                    //////////
-                    if (opcode == PacketOpcode.Evt_Communication__HearDirectSpeech_ID) // 02BD
+                    // Store all the created weenies!
+                    if(opcode == PacketOpcode.Evt_Physics__CreateObject_ID)
                     {
-                        var msg = CM_Communication.HearDirectSpeech.read(messageDataReader);
-                        // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
-                        {
-                            eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.MessageText.m_buffer + "\"," + chatType.ToString();
-                            if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
-                        }
+                        var message = CM_Physics.CreateObject.read(messageDataReader);
+                        uint wcid = message.wdesc._wcid;
+                        string name = message.wdesc._name.m_buffer;
+                        uint objectId = message.object_id;
+
+                        string val = wcid.ToString() + ",\"" + name + "\"";
+                        Weenies.Add(objectId, val);
+                        WCIDs.Add(objectId, wcid);
                     }
 
-                    //////////
-                    if (opcode == PacketOpcode.Evt_Communication__HearSpeech_ID) // 02BB
+                    if(opcode == PacketOpcode.VIEW_CONTENTS_EVENT)
                     {
-                        var msg = CM_Communication.HearSpeech.read(messageDataReader);
-                        // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
+                        var message = CM_Inventory.ViewContents.read(messageDataReader);
+                        // Check if we know what this item is and it is a Corpse
+                        if (Weenies.ContainsKey(message.i_container) && WCIDs[message.i_container] == 21)
                         {
-                            eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.MessageText.m_buffer + "\"," + chatType.ToString();
-                            if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
-                        }
-                    }
+                            string container = Weenies[message.i_container];
 
-                    //////////
-                    if (opcode == PacketOpcode.Evt_Communication__HearRangedSpeech_ID) // 02BC
-                    {
-                        var msg = CM_Communication.HearRangedSpeech.read(messageDataReader);
-                        // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
-                        {
-                            eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.MessageText.m_buffer + "\"," + chatType.ToString();
-                            if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
-                        }
-                    }
-
-                    //// EMOTES ////
-                    if (opcode == PacketOpcode.Evt_Communication__HearEmote_ID) // 02BC
-                    {
-                        var msg = CM_Communication.HearEmote.read(messageDataReader);
-                        // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
-                        {
-                            string chatType = "Emote";
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.EmoteMessage.m_buffer + "\"," + chatType;
-                            if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
-                        }
-                    }
-                    if (opcode == PacketOpcode.Evt_Communication__HearSoulEmote_ID) // 02BC
-                    {
-                        var msg = CM_Communication.HearSoulEmote.read(messageDataReader);
-                        // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
-                        {
-                            string chatType = "Emote";
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.EmoteMessage.m_buffer + "\"," + chatType;
-                            if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
+                            // key is [Name of Container] + "," + WCID + "," + [LootName]
+                            // val is the number of hits
+                            for(int i = 0; i<message.contents_list.list.Count; i++)
+                            {
+                                var item = message.contents_list.list[i];
+                                // We've captured the CreateObject message for this item
+                                if (Weenies.ContainsKey(item.m_iid))
+                                {
+                                    container = container.Replace("Corpse of ", "");
+                                    container = container.Replace("Treasure of ", "");
+                                    string key = container + "," + Weenies[item.m_iid] + "";
+                                    if (!Loot.ContainsKey(key))
+                                    {
+                                        Loot.Add(key, 1);
+                                    }
+                                    else
+                                    {
+                                        Loot[key]++;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -353,37 +335,12 @@ namespace aclogview
 
             items.Clear();
 
-            processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
+            //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
         }
 
         private void timer1_Tick(object sender, EventArgs e)
         {
-            ProcessFileResult result;
-            while (!processFileResults.IsEmpty)
-            {
-                if (processFileResults.TryTake(out result))
-                {
-                    var length = new FileInfo(result.FileName).Length;
-
-                    if (result.Hits > 0 || result.Exceptions > 0)
-                        dataGridView1.Rows.Add(result.Hits, result.Exceptions, length, result.FileName);
-                }
-            }
-
-            string specialOutputHitsQueueResult;
-            StringBuilder specialOutput = new StringBuilder();
-            while (!specialOutputHitsQueue.IsEmpty)
-            {
-                if (specialOutputHitsQueue.TryDequeue(out specialOutputHitsQueueResult))
-                    specialOutput.AppendLine(specialOutputHitsQueueResult);
-            }
-            richTextBox1.AppendText(specialOutput.ToString());
-
-            toolStripStatusLabel1.Text = "Files Processed: " + filesProcessed.ToString("N0") + " of " + filesToProcess.Count.ToString("N0");
-
-            toolStripStatusLabel2.Text = "Total Hits: " + totalHits.ToString("N0");
-
-            toolStripStatusLabel3.Text = "Message Exceptions: " + totalExceptions.ToString("N0");
+            
         }
 
         private void dataGridView1_CellDoubleClick(object sender, DataGridViewCellEventArgs e)

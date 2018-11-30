@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -115,16 +115,7 @@ namespace aclogview
                 btnChangeSearchPathRoot.Enabled = false;
                 btnStopSearch.Enabled = true;
 
-                timer1.Start();
-
-                ThreadPool.QueueUserWorkItem((state) =>
-                {
-                    // Do the actual search here
-                    DoSearch();
-
-                    if (!Disposing && !IsDisposed)
-                        btnStopSearch.BeginInvoke((Action)(() => btnStopSearch_Click(null, null)));
-                });
+                DoSearch();
             }
             catch (Exception ex)
             {
