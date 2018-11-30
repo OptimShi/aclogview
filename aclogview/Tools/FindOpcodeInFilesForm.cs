@@ -93,29 +93,31 @@ namespace aclogview
         private readonly ConcurrentQueue<string> specialOutputHitsQueue = new ConcurrentQueue<string>();
 
         //private Dictionary<MaterialType, uint> Materials = new Dictionary<MaterialType, uint>();
-        // key is WCID+","+Name
-        // val is a dictionary of key: MaterialTypes and value: hits
-        private Dictionary<string, Dictionary<uint, uint>> Weenies = new Dictionary<string, Dictionary<uint, uint>>();
+        // key is WCID+","+Name of the speaker
+        // val is MessageText+","+ChatMessageType of text
+        //private Dictionary<string, string> Speech = new Dictionary<string, string>();
 
-        private string logFileName = "D:\\Source\\Materials.csv";
+        // key is [Name of the speaker]+","+MessageText+","+[ChatMessageType of text]
+        // val is the log filename
+        private Dictionary<string, string> Speech = new Dictionary<string, string>();
+
+        private string logFileName = "D:\\Source\\Speech.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("WCID,Name,Material,Hits");
+                theFile.WriteLine("WCID,Name,Text,Type");
         }
 
         private void SaveResultsToLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                foreach (KeyValuePair<string, Dictionary<uint, uint>> entry in Weenies)
-                    foreach (KeyValuePair<uint, uint> mat in entry.Value) {
-                        theFile.Write(entry.Key + ",");
-                        MaterialType matType = (MaterialType)mat.Key;
-                        theFile.Write(matType.ToString() + "," + mat.Value.ToString());
-                        theFile.WriteLine();
-                    }
+                foreach (KeyValuePair<string, string> entry in Speech) {
+                    theFile.Write(entry.Key + ",");
+                    theFile.Write(entry.Value);
+                    theFile.WriteLine();
+                }
             }
         }
 
@@ -201,7 +203,7 @@ namespace aclogview
         private void DoSearch()
         {
             int progress = 0;
-            // filesToProcess.Clear(); filesToProcess.Add("d:\\Asheron's Call\\Log Files\\PCAP Part 1\\Julianna_pcap\\pkt_2017-1-30_1485830024_log.pcap");
+            //filesToProcess.Clear(); filesToProcess.Add("d:\\Asheron's Call\\Log Files\\PCAP Part 1\\Julianna_pcap\\pkt_2017-1-30_1485830024_log.pcap");
             foreach (string currentFile in filesToProcess)
             {
                 if (searchAborted || Disposing || IsDisposed)
@@ -226,7 +228,7 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("Weenies: " + Weenies.Count.ToString());
+                theFile.WriteLine("Speech Entries: " + Speech.Count.ToString());
             }
         }
 
@@ -247,6 +249,9 @@ namespace aclogview
 
             Dictionary<uint, CM_Physics.CreateObject> items = new Dictionary<uint, CM_Physics.CreateObject>();
 
+            string myPath = "D:\\Asheron's Call\\Log Files\\";
+            string logFilenameVal = fileName.Replace(myPath, "");
+
             foreach (PacketRecord record in records)
             {
                 if (searchAborted || Disposing || IsDisposed)
@@ -265,40 +270,73 @@ namespace aclogview
 
                     BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data));
 
-                    var messageCode = messageDataReader.ReadUInt32();
+                    PacketOpcode opcode = Util.readOpcode(messageDataReader);
 
-                    if (messageCode == 0xF745) // Create Object
+                    //////////
+                    if (opcode == PacketOpcode.Evt_Communication__HearDirectSpeech_ID) // 02BD
                     {
-                        var parsed = CM_Physics.CreateObject.read(messageDataReader);
-
-                        // if it has PWD_Packed_MaterialType
-                        //if ((parsed.wdesc.header & unchecked(2147483648)) != 0)
-                        if(parsed.wdesc._material_type != MaterialType.Undef_MaterialType)
+                        var msg = CM_Communication.HearDirectSpeech.read(messageDataReader);
+                        // This will filter out players...
+                        if (msg.SenderID > 0x50FFFFFF)
                         {
-                            uint wcid = parsed.wdesc._wcid;
-                            string name = parsed.wdesc._name.m_buffer;
-                            string weenieKey = wcid + ",\"" + name + "\"";
-                            if(parsed.wdesc._material_type != MaterialType.Undef_MaterialType)
-                            {
-                                if (!Weenies.ContainsKey(weenieKey))
-                                {
-                                    Dictionary<uint, uint> NewMatList = new Dictionary<uint, uint>();
-                                    Weenies.Add(weenieKey, NewMatList);
-                                }
+                            eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
+                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.MessageText.m_buffer + "\"," + chatType.ToString();
+                            if (!Speech.ContainsKey(key))
+                                Speech.Add(key, logFilenameVal);
+                        }
+                    }
 
-                                uint matType = (uint)parsed.wdesc._material_type;
-                                Dictionary<uint, uint> MatList = Weenies[weenieKey];
-                                if (MatList.ContainsKey(matType))
-                                {
-                                    MatList[matType]++;
-                                }
-                                else
-                                {
-                                    MatList.Add(matType, 1);
-                                }
+                    //////////
+                    if (opcode == PacketOpcode.Evt_Communication__HearSpeech_ID) // 02BB
+                    {
+                        var msg = CM_Communication.HearSpeech.read(messageDataReader);
+                        // This will filter out players...
+                        if (msg.SenderID > 0x50FFFFFF)
+                        {
+                            eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
+                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.MessageText.m_buffer + "\"," + chatType.ToString();
+                            if (!Speech.ContainsKey(key))
+                                Speech.Add(key, logFilenameVal);
+                        }
+                    }
 
-                                Weenies[weenieKey] = MatList;
-                            }
+                    //////////
+                    if (opcode == PacketOpcode.Evt_Communication__HearRangedSpeech_ID) // 02BC
+                    {
+                        var msg = CM_Communication.HearRangedSpeech.read(messageDataReader);
+                        // This will filter out players...
+                        if (msg.SenderID > 0x50FFFFFF)
+                        {
+                            eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
+                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.MessageText.m_buffer + "\"," + chatType.ToString();
+                            if (!Speech.ContainsKey(key))
+                                Speech.Add(key, logFilenameVal);
+                        }
+                    }
+
+                    //// EMOTES ////
+                    if (opcode == PacketOpcode.Evt_Communication__HearEmote_ID) // 02BC
+                    {
+                        var msg = CM_Communication.HearEmote.read(messageDataReader);
+                        // This will filter out players...
+                        if (msg.SenderID > 0x50FFFFFF)
+                        {
+                            string chatType = "Emote";
+                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.EmoteMessage.m_buffer + "\"," + chatType;
+                            if (!Speech.ContainsKey(key))
+                                Speech.Add(key, logFilenameVal);
+                        }
+                    }
+                    if (opcode == PacketOpcode.Evt_Communication__HearSoulEmote_ID) // 02BC
+                    {
+                        var msg = CM_Communication.HearSoulEmote.read(messageDataReader);
+                        // This will filter out players...
+                        if (msg.SenderID > 0x50FFFFFF)
+                        {
+                            string chatType = "Emote";
+                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.EmoteMessage.m_buffer + "\"," + chatType;
+                            if (!Speech.ContainsKey(key))
+                                Speech.Add(key, logFilenameVal);
                         }
                     }
                 }
