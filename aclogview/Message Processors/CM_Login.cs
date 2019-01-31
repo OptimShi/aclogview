@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -28,6 +28,18 @@ public class CM_Login : MessageProcessor {
             case PacketOpcode.PLAYER_DESCRIPTION_EVENT:
                 {
                     PlayerDescription message = PlayerDescription.read(messageDataReader);
+                    message.contributeToTreeView(outputTreeView);
+                    break;
+                }
+            case PacketOpcode.Evt_DDD__Interrogation_ID:
+                {
+                    DDD_InterrogationMessage message = DDD_InterrogationMessage.read(messageDataReader);
+                    message.contributeToTreeView(outputTreeView);
+                    break;
+                }
+            case PacketOpcode.Evt_DDD__EndDDD_ID:
+                {
+                    DDD_EndDDDMessage message = DDD_EndDDDMessage.read(messageDataReader);
                     message.contributeToTreeView(outputTreeView);
                     break;
                 }
@@ -758,5 +770,67 @@ public class CM_Login : MessageProcessor {
         }
     }
 
+    public class DDD_InterrogationMessage : Message
+    {
+        public uint m_dwServersRegion;
+        public uint m_NameRuleLanguage;
+        public uint m_dwProductID;
+        public PList<uint> m_SupportedLanguages;
 
+        public static DDD_InterrogationMessage read(BinaryReader binaryReader)
+        {
+            DDD_InterrogationMessage newObj = new DDD_InterrogationMessage();
+            newObj.m_dwServersRegion = binaryReader.ReadUInt32();
+            newObj.m_NameRuleLanguage = binaryReader.ReadUInt32();
+            newObj.m_dwProductID = binaryReader.ReadUInt32();
+            newObj.m_SupportedLanguages = PList<uint>.read(binaryReader);
+
+            return newObj;
+        }
+
+        public override void contributeToTreeView(TreeView treeView)
+        {
+            TreeNode rootNode = new TreeNode(this.GetType().Name);
+            rootNode.Expand();
+
+            ContextInfo.AddToList(new ContextInfo { DataType = DataType.Opcode });
+
+            rootNode.Nodes.Add("m_dwServersRegion = " + m_dwServersRegion);
+            ContextInfo.AddToList(new ContextInfo { Length = 4 });
+
+            rootNode.Nodes.Add("m_NameRuleLanguage = " + m_NameRuleLanguage);
+            ContextInfo.AddToList(new ContextInfo { Length = 4 });
+
+            rootNode.Nodes.Add("m_dwProductID = " + m_dwProductID);
+            ContextInfo.AddToList(new ContextInfo { Length = 4 });
+
+            TreeNode supportedLanguageNode = rootNode.Nodes.Add("m_SupportedLanguages = ");
+            // skip count header
+            ContextInfo.DataIndex += 4;
+            for (int i = 0; i < m_SupportedLanguages.list.Count; i++)
+            {
+                supportedLanguageNode.Nodes.Add(m_SupportedLanguages.list[i].ToString());
+                ContextInfo.AddToList(new ContextInfo { Length = 4 });
+            }
+
+            treeView.Nodes.Add(rootNode);
+        }
+    }
+    /// <summary>
+    /// This message is blank
+    /// </summary>
+    public class DDD_EndDDDMessage : Message
+    {
+        public static DDD_EndDDDMessage read(BinaryReader binaryReader)
+        {
+            DDD_EndDDDMessage newObj = new DDD_EndDDDMessage();
+            return newObj;
+        }
+
+        public override void contributeToTreeView(TreeView treeView)
+        {
+            TreeNode rootNode = new TreeNode(this.GetType().Name);
+            treeView.Nodes.Add(rootNode);
+        }
+    }
 }

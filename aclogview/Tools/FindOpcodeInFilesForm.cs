@@ -92,6 +92,30 @@ namespace aclogview
         private readonly ConcurrentDictionary<string, int> specialOutputHits = new ConcurrentDictionary<string, int>();
         private readonly ConcurrentQueue<string> specialOutputHitsQueue = new ConcurrentQueue<string>();
 
+        // key is WERROR, value is log filename
+        private Dictionary<uint, string> WeenieErrors = new Dictionary<uint, string>();
+
+        private string logFileName = "D:\\Source\\WeenieErrors.csv";
+
+        private void ResetLogFile()
+        {
+            using (StreamWriter theFile = new StreamWriter(logFileName, false))
+                theFile.WriteLine("WeenieError,Enum,Log File");
+        }
+
+        private void SaveResultsToLogFile()
+        {
+            using (StreamWriter theFile = new StreamWriter(logFileName, true))
+            {
+                foreach (KeyValuePair<uint, string> entry in WeenieErrors)
+                {
+                    theFile.Write(entry.Key + ",");
+                    theFile.Write((WERROR)entry.Key + ",");
+                    theFile.Write(entry.Value);
+                    theFile.WriteLine();
+                }
+            }
+        }
         private void btnStartSearch_Click(object sender, EventArgs e)
         {
             dataGridView1.RowCount = 0;
@@ -131,14 +155,11 @@ namespace aclogview
 
                 timer1.Start();
 
-                ThreadPool.QueueUserWorkItem((state) =>
-                {
-                    // Do the actual search here
-                    DoSearch();
+                // Do the actual search here
+                DoSearch();
 
-                    if (!Disposing && !IsDisposed)
-                        btnStopSearch.BeginInvoke((Action)(() => btnStopSearch_Click(null, null)));
-                });
+                // Save results to the log file
+                SaveResultsToLogFile();
             }
             catch (Exception ex)
             {
@@ -163,20 +184,35 @@ namespace aclogview
             btnStopSearch.Enabled = false;
         }
 
-
         private void DoSearch()
         {
-            Parallel.ForEach(filesToProcess, (currentFile) =>
+            int progress = 0;
+            foreach (string currentFile in filesToProcess)
             {
                 if (searchAborted || Disposing || IsDisposed)
                     return;
+
+                progress++;
+                LogProgress(progress, filesToProcess.Count, currentFile);
 
                 try
                 {
                     ProcessFile(currentFile);
                 }
                 catch { }
-            });
+            }
+        }
+
+        private void LogProgress(int progress, int total, string filename)
+        {
+            using (StreamWriter theFile = new StreamWriter("D:\\Source\\aclogview_progress.txt", false))
+            {
+                //Calculate percentage earlier in code
+                decimal percentage = (decimal)progress / total;
+                theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
+                theFile.WriteLine(filename);
+                theFile.WriteLine("Entries: " + WeenieErrors.Count.ToString());
+            }
         }
 
         private void ProcessFile(string fileName)
@@ -186,6 +222,9 @@ namespace aclogview
             bool isPcapng = false;
 
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted, ref isPcapng);
+
+            string myPath = "D:\\Asheron's Call\\Log Files\\";
+            string logFilenameVal = fileName.Replace(myPath, "");
 
             foreach (PacketRecord record in records)
             {
@@ -212,141 +251,25 @@ namespace aclogview
 
                     using (BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data)))
                     {
-                        var messageCode = messageDataReader.ReadUInt32();
+                        PacketOpcode opcode = Util.readOpcode(messageDataReader);
 
-                        //if (messageCode == (uint)PacketOpcode.Evt_Movement__MovementEvent_ID)
-                        //{
-                        //    var parsed = CM_Movement.MovementEvent.read(messageDataReader);
-
-                        //    if (parsed.movement_data.movementData_Unpack.movement_type == MovementTypes.Type.MoveToObject && $"{parsed.object_id:X8}".StartsWith("50"))
-                        //    {
-                        //        var output = $"{parsed.object_id:X8},{parsed.movement_data.movementData_Unpack.moveToObject:X8},{parsed.movement_data.movementData_Unpack.style},{parsed.movement_data.movementData_Unpack.movement_params.distance_to_object},{fileName},{record.index}";
-
-                        //        if (!specialOutputHits.ContainsKey(parsed.movement_data.movementData_Unpack.movement_params.distance_to_object.ToString() + parsed.movement_data.movementData_Unpack.style))
-                        //        {
-                        //            if (specialOutputHits.TryAdd(parsed.movement_data.movementData_Unpack.movement_params.distance_to_object.ToString() + parsed.movement_data.movementData_Unpack.style, 0))
-                        //                specialOutputHitsQueue.Enqueue(output);
-                        //        }
-                        //    }
-                        //}
-
-                        /*if (messageCode == 0x02BB) // Creature Message
+                        if (opcode == PacketOpcode.Evt_Communication__WeenieError_ID)
                         {
-                            var parsed = CM_Communication.HearSpeech.read(messageDataReader);
-
-                            //if (parsed.ChatMessageType != 0x0C)
-                            //    continue;
-
-                            var output = parsed.ChatMessageType.ToString("X4") + " " + parsed.MessageText;
-
-                            if (!specialOutputHits.ContainsKey(output))
+                            var message = CM_Communication.WeenieError.read(messageDataReader);
+                            uint error = (uint)message.etype;
+                            if(!WeenieErrors.ContainsKey(error))
                             {
-                                if (specialOutputHits.TryAdd(output, 0))
-                                    specialOutputHitsQueue.Enqueue(output);
+                                WeenieErrors.Add(error, logFilenameVal);
                             }
-                        }*/
-
-                        /*if (messageCode == 0xF745) // Create Object
+                        }else if (opcode == PacketOpcode.Evt_Communication__WeenieErrorWithString_ID)
                         {
-                            var parsed = CM_Physics.CreateObject.read(messageDataReader);
-                        }*/
-
-                        /*if (messageCode == 0xF7B0) // Game Event
-                        {
-                            var character = messageDataReader.ReadUInt32(); // Character
-                            var sequence = messageDataReader.ReadUInt32(); // Sequence
-                            var _event = messageDataReader.ReadUInt32(); // Event
-
-                            if (_event == 0x0147) // Group Chat
+                            var message = CM_Communication.WeenieErrorWithString.read(messageDataReader);
+                            uint error = (uint)message.etype;
+                            if (!WeenieErrors.ContainsKey(error))
                             {
-                                var parsed = CM_Communication.ChannelBroadcast.read(messageDataReader);
-
-                                var output = parsed.GroupChatType.ToString("X4");
-                                if (!specialOutputHits.ContainsKey(output))
-                                {
-                                    if (specialOutputHits.TryAdd(output, 0))
-                                        specialOutputHitsQueue.Enqueue(output);
-                                }
+                                WeenieErrors.Add(error, logFilenameVal);
                             }
-
-                            if (_event == 0x02BD) // Tell
-                            {
-                                var parsed = CM_Communication.HearDirectSpeech.read(messageDataReader);
-
-                                var output = parsed.ChatMessageType.ToString("X4");
-
-                                if (!specialOutputHits.ContainsKey(output))
-                                {
-                                    if (specialOutputHits.TryAdd(output, 0))
-                                        specialOutputHitsQueue.Enqueue(output);
-                                }
-                            }
-                        }*/
-
-                        //if (messageCode == 0xF7B1) // Game Action
-                        //{
-                        //    var sequence = messageDataReader.ReadUInt32(); // Sequence
-                        //    var opcode = messageDataReader.ReadUInt32(); // Opcode
-
-                        //    if (opcode == 0x0036) // Use event
-                        //    {
-                        //        var parsed = CM_Inventory.UseEvent.read(messageDataReader);
-
-                        //        var object_id = parsed.i_object;
-
-                        //        for (int i = record.index; i > 0; i--)
-                        //        {
-                        //            using (BinaryReader comessageDataReader = new BinaryReader(new MemoryStream(records[i].data)))
-                        //            {
-                        //                var msgCode = comessageDataReader.ReadUInt32();
-
-                        //                if (msgCode == 0xF745) // Create Object
-                        //                {
-                        //                    var parsedco = CM_Physics.CreateObject.read(comessageDataReader);
-
-                        //                    if (parsedco.wdesc._type == ITEM_TYPE.TYPE_PORTAL && parsedco.object_id == object_id)
-                        //                    {
-                        //                        var output = $"{parsedco.wdesc._name.m_buffer},{fileName},{record.index}";
-
-                        //                        if (!specialOutputHits.ContainsKey(output))
-                        //                        {
-                        //                            if (specialOutputHits.TryAdd(output, 0))
-                        //                                specialOutputHitsQueue.Enqueue(output);
-                        //                        }
-                        //                        break;
-                        //                    }
-                        //                }
-                        //            }
-                        //        }
-                        //    } 
-                        //}
-
-                        /*if (messageCode == 0xF7DE) // TurbineChat
-                        {
-                            var parsed = CM_Admin.ChatServerData.read(messageDataReader);
-
-                            string output = parsed.TurbineChatType.ToString("X2");
-
-                            if (!specialOutputHits.ContainsKey(output))
-                            {
-                                if (specialOutputHits.TryAdd(output, 0))
-                                    specialOutputHitsQueue.Enqueue(output);
-                            }
-                        }*/
-
-                        /*if (messageCode == 0xF7E0) // Server Message
-                        {
-                            var parsed = CM_Communication.TextBoxString.read(messageDataReader);
-
-                            var output = parsed.ChatMessageType.ToString("X4") + " " + parsed.MessageText + ",";
-                            var output = parsed.ChatMessageType.ToString("X4");
-
-                            if (!specialOutputHits.ContainsKey(output))
-                            {
-                                if (specialOutputHits.TryAdd(output, 0))
-                                    specialOutputHitsQueue.Enqueue(output);
-                            }
-                        }*/
+                        }
                     }
                 }
                 catch
