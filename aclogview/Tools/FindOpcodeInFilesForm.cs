@@ -97,16 +97,22 @@ namespace aclogview
         // val is MessageText+","+ChatMessageType of text
         //private Dictionary<string, string> Speech = new Dictionary<string, string>();
 
-        // key is [Name of Container] + "," + WCID + "," + [LootName]
+        // key is PropertyID
         // val is the number of hits
-        private Dictionary<string, uint> Loot = new Dictionary<string, uint>();
+        private Dictionary<uint, uint> PropInt = new Dictionary<uint, uint>();
+        private Dictionary<uint, uint> PropInt64 = new Dictionary<uint, uint>();
+        private Dictionary<uint, uint> PropBool = new Dictionary<uint, uint>();
+        private Dictionary<uint, uint> PropFloat = new Dictionary<uint, uint>();
+        private Dictionary<uint, uint> PropString = new Dictionary<uint, uint>();
+        private Dictionary<uint, uint> PropDID = new Dictionary<uint, uint>();
+        private Dictionary<uint, uint> PropIID = new Dictionary<uint, uint>();
 
-        private string logFileName = "D:\\Source\\Loot.csv";
+        private string logFileName = "D:\\Source\\Properties.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("Container WCID, Container Name,Loot WCID,Loot Name,Hits");
+                theFile.WriteLine("PropertyType, PropertyID,PropertyName,Hits");
         }
 
         private void SaveResultsToLogFile()
