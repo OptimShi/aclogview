@@ -92,30 +92,46 @@ namespace aclogview
         private readonly ConcurrentDictionary<string, int> specialOutputHits = new ConcurrentDictionary<string, int>();
         private readonly ConcurrentQueue<string> specialOutputHitsQueue = new ConcurrentQueue<string>();
 
-        //private Dictionary<MaterialType, uint> Materials = new Dictionary<MaterialType, uint>();
-        // key is WCID+","+Name of the speaker
-        // val is MessageText+","+ChatMessageType of text
-        //private Dictionary<string, string> Speech = new Dictionary<string, string>();
 
-        // key is [Name of Container] + "," + WCID + "," + [LootName]
-        // val is the number of hits
-        private Dictionary<string, uint> Loot = new Dictionary<string, uint>();
 
-        private string logFileName = "D:\\Source\\Loot.csv";
+        private string logFileName = "D:\\Source\\AppraisalProps.csv";
+        private List<int> intStats = new List<int>();
+        private List<int> int64Stats = new List<int>();
+        private List<int> boolStats = new List<int>();
+        private List<int> floatStats = new List<int>();
+        private List<int> strStats = new List<int>();
+        private List<int> didStats = new List<int>();
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("Container WCID, Container Name,Loot WCID,Loot Name,Hits");
+                theFile.WriteLine("Int,Int64,Bool,Float,Str,Did");
         }
 
         private void SaveResultsToLogFile()
         {
-            using (StreamWriter theFile = new StreamWriter(logFileName, true))
+            using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
-                foreach (KeyValuePair<string, uint> entry in Loot) {
-                    theFile.Write(entry.Key + ",");
-                    theFile.Write(entry.Value);
+                theFile.WriteLine("Int,,Int64,,Bool,,Float,,Str,,Did");
+
+                // get the max count
+                int max = 0;
+                if (intStats.Count > max) max = intStats.Count;
+                if (int64Stats.Count > max) max = int64Stats.Count;
+                if (boolStats.Count > max) max = boolStats.Count;
+                if (floatStats.Count > max) max = floatStats.Count;
+                if (strStats.Count > max) max = strStats.Count;
+                if (didStats.Count > max) max = didStats.Count;
+
+                for(int i = 0; i < max; i++)
+                {
+                    if (intStats.Count > i) theFile.Write(intStats[i] + "," + (STypeInt)intStats[i] + ","); else theFile.Write(",,");
+                    if (int64Stats.Count > i) theFile.Write(int64Stats[i] + "," + (STypeInt64)int64Stats[i] + ","); else theFile.Write(",,");
+                    if (boolStats.Count > i) theFile.Write(boolStats[i] + "," + (STypeBool)boolStats[i] + ","); else theFile.Write(",,");
+                    if (floatStats.Count > i) theFile.Write(floatStats[i] + "," + (STypeFloat)floatStats[i] + ","); else theFile.Write(",,");
+                    if (strStats.Count > i) theFile.Write(strStats[i] + "," + (STypeString)strStats[i] + ","); else theFile.Write(",,");
+                    if (didStats.Count > i) theFile.Write(didStats[i] + "," + (STypeDID)didStats[i] + ","); else theFile.Write(",,");
+
                     theFile.WriteLine();
                 }
             }
@@ -215,6 +231,7 @@ namespace aclogview
                 try
                 {
                     ProcessFile(currentFile);
+                    SaveResultsToLogFile();
                 }
                 catch { }
             }
@@ -228,34 +245,14 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("Loot Entries: " + Loot.Count.ToString());
             }
-        }
-
-        // Gets a CSV string containing the info we are looking for!
-        private string GetValueFromCreateObj(CM_Physics.CreateObject item, CM_Physics.CreateObject wielder) {
-            string value = "";
-            // WCID,Name,Wield WCID,Wield Name
-            value = wielder.wdesc._wcid.ToString() + ",\"" + wielder.wdesc._name + "\"," + item.wdesc._wcid.ToString() + ",\"" + item.wdesc._name + "\"";
-            return value;
         }
 
         private void ProcessFile(string fileName)
         {
-            int hits = 0;
             int exceptions = 0;
 
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted);
-
-            Dictionary<uint, CM_Physics.CreateObject> items = new Dictionary<uint, CM_Physics.CreateObject>();
-
-            string myPath = "D:\\Asheron's Call\\Log Files\\";
-            string logFilenameVal = fileName.Replace(myPath, "");
-
-            // Key is the ObjectID
-            // Value is WCID + "," + Name
-            Dictionary<uint, string> Weenies = new Dictionary<uint, string>();
-            Dictionary<uint, uint> WCIDs = new Dictionary<uint, uint>(); // key is ObjectID, Value is WCID
 
             foreach (PacketRecord record in records)
             {
@@ -277,49 +274,26 @@ namespace aclogview
 
                     PacketOpcode opcode = Util.readOpcode(messageDataReader);
 
-                    // Store all the created weenies!
-                    if(opcode == PacketOpcode.Evt_Physics__CreateObject_ID)
+                    if(opcode == PacketOpcode.APPRAISAL_INFO_EVENT)
                     {
-                        var message = CM_Physics.CreateObject.read(messageDataReader);
-                        uint wcid = message.wdesc._wcid;
-                        string name = message.wdesc._name.m_buffer;
-                        uint objectId = message.object_id;
+                        var message = CM_Examine.SetAppraiseInfo.read(messageDataReader);
+                        foreach (KeyValuePair<STypeInt, int> entry in message.i_prof._intStatsTable.hashTable)
+                            if (intStats.IndexOf((int)entry.Key) == -1) intStats.Add((int)entry.Key);
 
-                        string val = wcid.ToString() + ",\"" + name + "\"";
-                        Weenies.Add(objectId, val);
-                        WCIDs.Add(objectId, wcid);
-                    }
+                        foreach (KeyValuePair<STypeInt64, long> entry in message.i_prof._int64StatsTable.hashTable)
+                            if (int64Stats.IndexOf((int)entry.Key) == -1) int64Stats.Add((int)entry.Key);
 
-                    if(opcode == PacketOpcode.VIEW_CONTENTS_EVENT)
-                    {
-                        var message = CM_Inventory.ViewContents.read(messageDataReader);
-                        // Check if we know what this item is and it is a Corpse
-                        if (Weenies.ContainsKey(message.i_container) && WCIDs[message.i_container] == 21)
-                        {
-                            string container = Weenies[message.i_container];
+                        foreach (KeyValuePair<STypeBool, int> entry in message.i_prof._boolStatsTable.hashTable)
+                            if (boolStats.IndexOf((int)entry.Key) == -1) boolStats.Add((int)entry.Key);
 
-                            // key is [Name of Container] + "," + WCID + "," + [LootName]
-                            // val is the number of hits
-                            for(int i = 0; i<message.contents_list.list.Count; i++)
-                            {
-                                var item = message.contents_list.list[i];
-                                // We've captured the CreateObject message for this item
-                                if (Weenies.ContainsKey(item.m_iid))
-                                {
-                                    container = container.Replace("Corpse of ", "");
-                                    container = container.Replace("Treasure of ", "");
-                                    string key = container + "," + Weenies[item.m_iid] + "";
-                                    if (!Loot.ContainsKey(key))
-                                    {
-                                        Loot.Add(key, 1);
-                                    }
-                                    else
-                                    {
-                                        Loot[key]++;
-                                    }
-                                }
-                            }
-                        }
+                        foreach (KeyValuePair<STypeFloat, double> entry in message.i_prof._floatStatsTable.hashTable)
+                            if (floatStats.IndexOf((int)entry.Key) == -1) floatStats.Add((int)entry.Key);
+
+                        foreach (KeyValuePair<STypeString, PStringChar> entry in message.i_prof._strStatsTable.hashTable)
+                            if (strStats.IndexOf((int)entry.Key) == -1) strStats.Add((int)entry.Key);
+
+                        foreach (KeyValuePair<STypeDID, uint> entry in message.i_prof._didStatsTable.hashTable)
+                            if (didStats.IndexOf((int)entry.Key) == -1) didStats.Add((int)entry.Key);
                     }
                 }
                 catch
@@ -332,10 +306,6 @@ namespace aclogview
             }
 
             Interlocked.Increment(ref filesProcessed);
-
-            items.Clear();
-
-            //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
         }
 
         private void timer1_Tick(object sender, EventArgs e)
