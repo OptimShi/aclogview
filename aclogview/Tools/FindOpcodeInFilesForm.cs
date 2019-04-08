@@ -94,7 +94,7 @@ namespace aclogview
 
 
 
-        private string logFileName = "D:\\Source\\AppraisalProps.csv";
+        private string logFileName = "D:\\Source\\MaterialColors.csv";
         private List<int> intStats = new List<int>();
         private List<int> int64Stats = new List<int>();
         private List<int> boolStats = new List<int>();
@@ -105,35 +105,14 @@ namespace aclogview
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("Int,Int64,Bool,Float,Str,Did");
+                theFile.WriteLine("wcid,name,setup,material,material name,subpals,textures,models");
         }
 
-        private void SaveResultsToLogFile()
+        private void SaveResultsToLogFile(string data)
         {
-            using (StreamWriter theFile = new StreamWriter(logFileName, false))
+            using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                theFile.WriteLine("Int,,Int64,,Bool,,Float,,Str,,Did");
-
-                // get the max count
-                int max = 0;
-                if (intStats.Count > max) max = intStats.Count;
-                if (int64Stats.Count > max) max = int64Stats.Count;
-                if (boolStats.Count > max) max = boolStats.Count;
-                if (floatStats.Count > max) max = floatStats.Count;
-                if (strStats.Count > max) max = strStats.Count;
-                if (didStats.Count > max) max = didStats.Count;
-
-                for(int i = 0; i < max; i++)
-                {
-                    if (intStats.Count > i) theFile.Write(intStats[i] + "," + (STypeInt)intStats[i] + ","); else theFile.Write(",,");
-                    if (int64Stats.Count > i) theFile.Write(int64Stats[i] + "," + (STypeInt64)int64Stats[i] + ","); else theFile.Write(",,");
-                    if (boolStats.Count > i) theFile.Write(boolStats[i] + "," + (STypeBool)boolStats[i] + ","); else theFile.Write(",,");
-                    if (floatStats.Count > i) theFile.Write(floatStats[i] + "," + (STypeFloat)floatStats[i] + ","); else theFile.Write(",,");
-                    if (strStats.Count > i) theFile.Write(strStats[i] + "," + (STypeString)strStats[i] + ","); else theFile.Write(",,");
-                    if (didStats.Count > i) theFile.Write(didStats[i] + "," + (STypeDID)didStats[i] + ","); else theFile.Write(",,");
-
-                    theFile.WriteLine();
-                }
+                theFile.WriteLine(data);
             }
         }
 
@@ -182,7 +161,7 @@ namespace aclogview
                 DoSearch();
 
                 // Save results to the log file
-                SaveResultsToLogFile();
+                //SaveResultsToLogFile();
 
                 watch.Stop();
                 string watchTimerText = watch.Elapsed.TotalSeconds.ToString();
@@ -231,7 +210,7 @@ namespace aclogview
                 try
                 {
                     ProcessFile(currentFile);
-                    SaveResultsToLogFile();
+                    //SaveResultsToLogFile();
                 }
                 catch { }
             }
@@ -274,26 +253,35 @@ namespace aclogview
 
                     PacketOpcode opcode = Util.readOpcode(messageDataReader);
 
-                    if(opcode == PacketOpcode.APPRAISAL_INFO_EVENT)
+                    if(opcode == PacketOpcode.Evt_Physics__CreateObject_ID)
                     {
-                        var message = CM_Examine.SetAppraiseInfo.read(messageDataReader);
-                        foreach (KeyValuePair<STypeInt, int> entry in message.i_prof._intStatsTable.hashTable)
-                            if (intStats.IndexOf((int)entry.Key) == -1) intStats.Add((int)entry.Key);
+                        var message = CM_Physics.CreateObject.read(messageDataReader);
+                        if(message.wdesc._type != ITEM_TYPE.TYPE_CREATURE
+                            && message.wdesc._type != ITEM_TYPE.TYPE_CONTAINER
+                            && message.wdesc._material_type > 0)
+                        {
+                            if (message.objdesc.subpalettes.Count == 0 && message.objdesc.tmChanges.Count == 0 && message.objdesc.apChanges.Count == 0)
+                                continue;
 
-                        foreach (KeyValuePair<STypeInt64, long> entry in message.i_prof._int64StatsTable.hashTable)
-                            if (int64Stats.IndexOf((int)entry.Key) == -1) int64Stats.Add((int)entry.Key);
+                            var wcid = message.wdesc._wcid;
+                            var name = message.wdesc._name.ToString().Replace("\"", "\"\"");
+                            var setup = message.physicsdesc.setup_id;
+                            int material = (int)message.wdesc._material_type;
+                            string subpals = "";
+                            for(var i = 0; i< message.objdesc.subpalettes.Count; i++)
+                                subpals += message.objdesc.subpalettes[i].subID + "/" + message.objdesc.subpalettes[i].offset + "/" + message.objdesc.subpalettes[i].numcolors + "|";
 
-                        foreach (KeyValuePair<STypeBool, int> entry in message.i_prof._boolStatsTable.hashTable)
-                            if (boolStats.IndexOf((int)entry.Key) == -1) boolStats.Add((int)entry.Key);
+                            string textures = "";
+                            for (var i = 0; i < message.objdesc.tmChanges.Count; i++)
+                                textures += message.objdesc.tmChanges[i].part_index + "/" + message.objdesc.tmChanges[i].old_tex_id + "/" + message.objdesc.tmChanges[i].new_tex_id + "|";
 
-                        foreach (KeyValuePair<STypeFloat, double> entry in message.i_prof._floatStatsTable.hashTable)
-                            if (floatStats.IndexOf((int)entry.Key) == -1) floatStats.Add((int)entry.Key);
+                            string models = "";
+                            for (var i = 0; i < message.objdesc.apChanges.Count; i++)
+                                models += message.objdesc.apChanges[i].part_index + "/" + message.objdesc.apChanges[i].part_id + "|";
 
-                        foreach (KeyValuePair<STypeString, PStringChar> entry in message.i_prof._strStatsTable.hashTable)
-                            if (strStats.IndexOf((int)entry.Key) == -1) strStats.Add((int)entry.Key);
-
-                        foreach (KeyValuePair<STypeDID, uint> entry in message.i_prof._didStatsTable.hashTable)
-                            if (didStats.IndexOf((int)entry.Key) == -1) didStats.Add((int)entry.Key);
+                            string line = wcid + ",\"" + name + "\",\"" + setup.ToString("X8") + "\"," + material + "," + message.wdesc._material_type + "," + subpals + "," + textures + "," + models;
+                            SaveResultsToLogFile(line);
+                        }
                     }
                 }
                 catch
