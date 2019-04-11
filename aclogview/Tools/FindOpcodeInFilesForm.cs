@@ -13,6 +13,7 @@ using System.Windows.Forms;
 using aclogview.Properties;
 using System.Text;
 using System.Diagnostics;
+using static CM_Physics.PublicWeenieDesc;
 
 namespace aclogview
 {
@@ -101,23 +102,22 @@ namespace aclogview
         // val is the number of hits
         private Dictionary<string, uint> Loot = new Dictionary<string, uint>();
 
-        private string logFileName = "D:\\Source\\Loot.csv";
+        private string logFileName = "D:\\Source\\Treasure.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("Container WCID, Container Name,Loot WCID,Loot Name,Hits");
+                theFile.WriteLine("container guid, container wcid, container name, loot guid, loot wcid, loot name, value, material, workmanship,num tinks, gem count, gem material, spells");
         }
 
-        private void SaveResultsToLogFile()
+        private void SaveResultsToLogFile(List<string> results)
         {
+            if (results.Count == 0) return;
+
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                foreach (KeyValuePair<string, uint> entry in Loot) {
-                    theFile.Write(entry.Key + ",");
-                    theFile.Write(entry.Value);
-                    theFile.WriteLine();
-                }
+                for (var i = 0; i < results.Count; i++)
+                    theFile.WriteLine(results[i]);
             }
         }
 
@@ -164,9 +164,6 @@ namespace aclogview
 
                 // Do the actual search here
                 DoSearch();
-
-                // Save results to the log file
-                SaveResultsToLogFile();
 
                 watch.Stop();
                 string watchTimerText = watch.Elapsed.TotalSeconds.ToString();
@@ -247,15 +244,9 @@ namespace aclogview
 
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted);
 
-            Dictionary<uint, CM_Physics.CreateObject> items = new Dictionary<uint, CM_Physics.CreateObject>();
-
-            string myPath = "D:\\Asheron's Call\\Log Files\\";
-            string logFilenameVal = fileName.Replace(myPath, "");
-
-            // Key is the ObjectID
-            // Value is WCID + "," + Name
-            Dictionary<uint, string> Weenies = new Dictionary<uint, string>();
-            Dictionary<uint, uint> WCIDs = new Dictionary<uint, uint>(); // key is ObjectID, Value is WCID
+            Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList = new Dictionary<uint, CM_Examine.SetAppraiseInfo>(); // key is objectId
+            Dictionary<uint, CM_Physics.CreateObject> CreateObjectList = new Dictionary<uint, CM_Physics.CreateObject>(); // key is objectId
+            Dictionary<uint, CM_Inventory.ViewContents> ViewContentsList = new Dictionary<uint, CM_Inventory.ViewContents>(); // key is ContainerID
 
             foreach (PacketRecord record in records)
             {
@@ -278,18 +269,26 @@ namespace aclogview
                     PacketOpcode opcode = Util.readOpcode(messageDataReader);
 
                     // Store all the created weenies!
-                    if(opcode == PacketOpcode.Evt_Physics__CreateObject_ID)
+                    switch (opcode)
                     {
-                        var message = CM_Physics.CreateObject.read(messageDataReader);
-                        uint wcid = message.wdesc._wcid;
-                        string name = message.wdesc._name.m_buffer;
-                        uint objectId = message.object_id;
-
-                        string val = wcid.ToString() + ",\"" + name + "\"";
-                        Weenies.Add(objectId, val);
-                        WCIDs.Add(objectId, wcid);
+                        case PacketOpcode.Evt_Physics__CreateObject_ID:
+                            var message = CM_Physics.CreateObject.read(messageDataReader);
+                            uint objectId = message.object_id;
+                            CreateObjectList.Add(objectId, message);
+                            break;
+                        case PacketOpcode.APPRAISAL_INFO_EVENT:
+                            var appraisalMessage = CM_Examine.SetAppraiseInfo.read(messageDataReader);
+                            uint appraisalID = appraisalMessage.i_objid;
+                            AppraisalList.Add(appraisalID, appraisalMessage);
+                            break;
+                        case PacketOpcode.VIEW_CONTENTS_EVENT:
+                            var viewContentsMessage = CM_Inventory.ViewContents.read(messageDataReader);
+                            uint containerId = viewContentsMessage.i_container;
+                            ViewContentsList.Add(containerId, viewContentsMessage);
+                            break;
                     }
 
+                    /*
                     if(opcode == PacketOpcode.VIEW_CONTENTS_EVENT)
                     {
                         var message = CM_Inventory.ViewContents.read(messageDataReader);
@@ -321,6 +320,7 @@ namespace aclogview
                             }
                         }
                     }
+                    */
                 }
                 catch
                 {
@@ -331,9 +331,96 @@ namespace aclogview
                 }
             }
 
+            // Store out text to dump in here... So just one write call per log
+            List<string> results = new List<string>();
+
+            //container guid, container wcid, container name, loot guid, loot wcid, loot name, value, material, workmanship,num tinks, gem count, gem material, spells
+
+            // Let's process!
+            foreach (var e in ViewContentsList)
+            {
+                var containerId = e.Key;
+                // We know what this container is...
+                if(CreateObjectList.ContainsKey(containerId))
+                {
+                    var newObj = CreateObjectList[containerId];
+                    // Make sure the container doesn't have a container id (e.g. it's a Pack in a player's inventory...)
+                    if ((newObj.wdesc.header & (uint)PublicWeenieDescPackHeader.PWD_Packed_ContainerID) == 0)
+                    {
+                        string containerName = newObj.wdesc._name.m_buffer;
+                        containerName = containerName.Replace("Corpse of ", "");
+                        containerName = containerName.Replace("Treasure of ", "");
+
+                        string containerWCID;
+                        if (newObj.wdesc._wcid == 21) // Remove the "Corpse" weenies
+                            containerWCID = "";
+                        else
+                            containerWCID = newObj.wdesc._wcid.ToString();
+
+
+                            // Cycle through all the contents of the container
+                            for (int i = 0; i < e.Value.contents_list.list.Count; i++)
+                            {
+                                var thisContent = e.Value.contents_list.list[i];
+                                uint thisContentGUID = thisContent.m_iid;
+
+                                if (CreateObjectList.ContainsKey(thisContentGUID) && AppraisalList.ContainsKey(thisContentGUID))
+                                {
+                                    var co = CreateObjectList[thisContentGUID];
+                                    var app = AppraisalList[thisContentGUID];
+
+                                    string lootName = co.wdesc._name.m_buffer;
+                                    uint lootWCID = co.wdesc._wcid;
+                                    uint value = co.wdesc._value;
+                                    uint materialId = (uint)co.wdesc._material_type;
+                                    if (materialId > 0)
+                                    {
+                                        string workmanship = "";
+                                        if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.ITEM_WORKMANSHIP_INT))
+                                            workmanship = app.i_prof._intStatsTable.hashTable[STypeInt.ITEM_WORKMANSHIP_INT].ToString();
+
+                                        string numTinks = "";
+                                        if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.NUM_TIMES_TINKERED_INT))
+                                            numTinks = app.i_prof._intStatsTable.hashTable[STypeInt.NUM_TIMES_TINKERED_INT].ToString();
+
+                                        string gemCount = "";
+                                        if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.GEM_COUNT_INT))
+                                            gemCount = app.i_prof._intStatsTable.hashTable[STypeInt.GEM_COUNT_INT].ToString();
+
+                                        string gemMaterial = "";
+                                        if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.GEM_TYPE_INT))
+                                            gemMaterial = app.i_prof._intStatsTable.hashTable[STypeInt.GEM_TYPE_INT].ToString();
+
+                                        string spells = "";
+                                        for (var j = 0; j < app.i_prof._spellsTable.list.Count; j++)
+                                            spells += app.i_prof._spellsTable.list[j].ToString() + "|";
+
+                                        string result = thisContentGUID + "," +
+                                            containerWCID + "," +
+                                            containerName + "," +
+                                            thisContentGUID + "," +
+                                            lootWCID + "," +
+                                            lootName + "," +
+                                            value + "," +
+                                            materialId + "," +
+                                            workmanship + "," +
+                                            numTinks + "," +
+                                            gemCount + "," +
+                                            gemMaterial + "," +
+                                            spells;
+                                        results.Add(result);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if(results.Count > 0)
+                SaveResultsToLogFile(results);
+
             Interlocked.Increment(ref filesProcessed);
 
-            items.Clear();
 
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
         }
