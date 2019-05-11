@@ -102,12 +102,14 @@ namespace aclogview
         // val is the number of hits
         private Dictionary<string, uint> Loot = new Dictionary<string, uint>();
 
-        private string logFileName = "D:\\Source\\Treasure.csv";
+        DateTime dt = DateTime.Now;
+
+        private string logFileName { get { return "D:\\Source\\Treasure-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("container guid, container wcid, container name, loot guid, loot wcid, loot name, value, material, workmanship,num tinks, gem count, gem material, spells");
+                theFile.WriteLine("container guid, container wcid, container name, loot guid, loot wcid, loot name, item type, weapon type, value, material, workmanship,num tinks, gem count, gem material, spell set, spells");
         }
 
         private void SaveResultsToLogFile(List<string> results)
@@ -274,17 +276,27 @@ namespace aclogview
                         case PacketOpcode.Evt_Physics__CreateObject_ID:
                             var message = CM_Physics.CreateObject.read(messageDataReader);
                             uint objectId = message.object_id;
-                            CreateObjectList.Add(objectId, message);
+                            if(CreateObjectList.ContainsKey(objectId))
+                                CreateObjectList[objectId] = message;
+                            else
+                                CreateObjectList.Add(objectId, message);
                             break;
                         case PacketOpcode.APPRAISAL_INFO_EVENT:
                             var appraisalMessage = CM_Examine.SetAppraiseInfo.read(messageDataReader);
                             uint appraisalID = appraisalMessage.i_objid;
-                            AppraisalList.Add(appraisalID, appraisalMessage);
+                            if (AppraisalList.ContainsKey(appraisalID))
+                                AppraisalList[appraisalID] = appraisalMessage;
+                            else
+                                AppraisalList.Add(appraisalID, appraisalMessage);
+
                             break;
                         case PacketOpcode.VIEW_CONTENTS_EVENT:
                             var viewContentsMessage = CM_Inventory.ViewContents.read(messageDataReader);
                             uint containerId = viewContentsMessage.i_container;
-                            ViewContentsList.Add(containerId, viewContentsMessage);
+                            if (ViewContentsList.ContainsKey(containerId))
+                                ViewContentsList[containerId] = viewContentsMessage;
+                            else
+                                ViewContentsList.Add(containerId, viewContentsMessage);
                             break;
                     }
 
@@ -357,58 +369,72 @@ namespace aclogview
                         else
                             containerWCID = newObj.wdesc._wcid.ToString();
 
+                        // Cycle through all the contents of the container
+                        for (int i = 0; i < e.Value.contents_list.list.Count; i++)
+                        {
+                            var thisContent = e.Value.contents_list.list[i];
+                            uint thisContentGUID = thisContent.m_iid;
 
-                            // Cycle through all the contents of the container
-                            for (int i = 0; i < e.Value.contents_list.list.Count; i++)
+                            if (CreateObjectList.ContainsKey(thisContentGUID) && AppraisalList.ContainsKey(thisContentGUID))
                             {
-                                var thisContent = e.Value.contents_list.list[i];
-                                uint thisContentGUID = thisContent.m_iid;
+                                var co = CreateObjectList[thisContentGUID];
+                                var app = AppraisalList[thisContentGUID];
 
-                                if (CreateObjectList.ContainsKey(thisContentGUID) && AppraisalList.ContainsKey(thisContentGUID))
+                                string lootName = co.wdesc._name.m_buffer;
+                                uint lootWCID = co.wdesc._wcid;
+                                uint value = co.wdesc._value;
+                                uint materialId = (uint)co.wdesc._material_type;
+                                if (materialId > 0)
                                 {
-                                    var co = CreateObjectList[thisContentGUID];
-                                    var app = AppraisalList[thisContentGUID];
+                                    string workmanship = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.ITEM_WORKMANSHIP_INT))
+                                        workmanship = app.i_prof._intStatsTable.hashTable[STypeInt.ITEM_WORKMANSHIP_INT].ToString();
 
-                                    string lootName = co.wdesc._name.m_buffer;
-                                    uint lootWCID = co.wdesc._wcid;
-                                    uint value = co.wdesc._value;
-                                    uint materialId = (uint)co.wdesc._material_type;
-                                    if (materialId > 0)
-                                    {
-                                        string workmanship = "";
-                                        if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.ITEM_WORKMANSHIP_INT))
-                                            workmanship = app.i_prof._intStatsTable.hashTable[STypeInt.ITEM_WORKMANSHIP_INT].ToString();
+                                    string numTinks = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.NUM_TIMES_TINKERED_INT))
+                                        numTinks = app.i_prof._intStatsTable.hashTable[STypeInt.NUM_TIMES_TINKERED_INT].ToString();
 
-                                        string numTinks = "";
-                                        if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.NUM_TIMES_TINKERED_INT))
-                                            numTinks = app.i_prof._intStatsTable.hashTable[STypeInt.NUM_TIMES_TINKERED_INT].ToString();
+                                    string gemCount = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.GEM_COUNT_INT))
+                                        gemCount = app.i_prof._intStatsTable.hashTable[STypeInt.GEM_COUNT_INT].ToString();
 
-                                        string gemCount = "";
-                                        if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.GEM_COUNT_INT))
-                                            gemCount = app.i_prof._intStatsTable.hashTable[STypeInt.GEM_COUNT_INT].ToString();
+                                    string gemMaterial = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.GEM_TYPE_INT))
+                                        gemMaterial = app.i_prof._intStatsTable.hashTable[STypeInt.GEM_TYPE_INT].ToString();
 
-                                        string gemMaterial = "";
-                                        if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.GEM_TYPE_INT))
-                                            gemMaterial = app.i_prof._intStatsTable.hashTable[STypeInt.GEM_TYPE_INT].ToString();
+                                    string spells = "";
+                                    for (var j = 0; j < app.i_prof._spellsTable.list.Count; j++)
+                                        spells += app.i_prof._spellsTable.list[j].ToString() + "|";
 
-                                        string spells = "";
-                                        for (var j = 0; j < app.i_prof._spellsTable.list.Count; j++)
-                                            spells += app.i_prof._spellsTable.list[j].ToString() + "|";
+                                    string itemType = co.wdesc._type.ToString();
 
-                                        string result = thisContentGUID + "," +
+                                    string weaponType = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.WEAPON_TYPE_INT))
+                                        weaponType = app.i_prof._intStatsTable.hashTable[STypeInt.WEAPON_TYPE_INT].ToString();
+
+                                    string spellSet = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.EQUIPMENT_SET_ID_INT))
+                                        spellSet = app.i_prof._intStatsTable.hashTable[STypeInt.EQUIPMENT_SET_ID_INT].ToString();
+
+                                    //theFile.WriteLine("container guid, container wcid, container name, loot guid, loot wcid, loot name, item type, weapon type, value, material, workmanship,num tinks, gem count, gem material, spell set, spells");
+
+                                    string result = thisContentGUID + "," +
                                             containerWCID + "," +
                                             containerName + "," +
                                             thisContentGUID + "," +
                                             lootWCID + "," +
                                             lootName + "," +
+                                            itemType + "," +
+                                            weaponType + "," + 
                                             value + "," +
                                             materialId + "," +
                                             workmanship + "," +
                                             numTinks + "," +
                                             gemCount + "," +
                                             gemMaterial + "," +
+                                            spellSet + "," +
                                             spells;
-                                        results.Add(result);
+                                    results.Add(result);
                                 }
                             }
                         }
