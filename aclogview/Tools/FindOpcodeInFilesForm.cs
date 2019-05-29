@@ -109,7 +109,10 @@ namespace aclogview
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("container guid, container wcid, container name, loot guid, loot wcid, loot name, item type, weapon type, value, material, workmanship,num tinks, gem count, gem material, spell set, spells");
+            {
+                theFile.Write("container guid, container wcid, container name, loot guid, loot wcid, loot name, item type, weapon type, value, material, workmanship,num tinks, gem count, gem material,");
+                theFile.WriteLine("clothingPriority,locations,wieldReq,wieldSkillType,wieldDiff,wieldReq2,wieldSkillType2,wieldDiff2,item level,spell set, spells");
+            }
         }
 
         private void SaveResultsToLogFile(List<string> results)
@@ -250,6 +253,10 @@ namespace aclogview
             Dictionary<uint, CM_Physics.CreateObject> CreateObjectList = new Dictionary<uint, CM_Physics.CreateObject>(); // key is objectId
             Dictionary<uint, CM_Inventory.ViewContents> ViewContentsList = new Dictionary<uint, CM_Inventory.ViewContents>(); // key is ContainerID
 
+            Dictionary<uint, Position> Positions = new Dictionary<uint, Position>(); // key is GUID, value is the last seen position of the item
+
+            Dictionary<uint, uint> WeenieMap = new Dictionary<uint, uint>(); // key is corpse GUID, value is weenie GUID
+
             foreach (PacketRecord record in records)
             {
                 if (searchAborted || Disposing || IsDisposed)
@@ -276,10 +283,16 @@ namespace aclogview
                         case PacketOpcode.Evt_Physics__CreateObject_ID:
                             var message = CM_Physics.CreateObject.read(messageDataReader);
                             uint objectId = message.object_id;
-                            if(CreateObjectList.ContainsKey(objectId))
+                            if (CreateObjectList.ContainsKey(objectId))
+                            {
                                 CreateObjectList[objectId] = message;
+                                Positions[objectId] = message.physicsdesc.pos;
+                            }
                             else
+                            {
                                 CreateObjectList.Add(objectId, message);
+                                Positions.Add(objectId, message.physicsdesc.pos);
+                            }
                             break;
                         case PacketOpcode.APPRAISAL_INFO_EVENT:
                             var appraisalMessage = CM_Examine.SetAppraiseInfo.read(messageDataReader);
@@ -288,7 +301,6 @@ namespace aclogview
                                 AppraisalList[appraisalID] = appraisalMessage;
                             else
                                 AppraisalList.Add(appraisalID, appraisalMessage);
-
                             break;
                         case PacketOpcode.VIEW_CONTENTS_EVENT:
                             var viewContentsMessage = CM_Inventory.ViewContents.read(messageDataReader);
@@ -298,6 +310,25 @@ namespace aclogview
                             else
                                 ViewContentsList.Add(containerId, viewContentsMessage);
                             break;
+                        case PacketOpcode.Evt_Movement__UpdatePosition_ID:
+                            var positionMessage = CM_Movement.UpdatePosition.read(messageDataReader);
+                            var positionObjId = positionMessage.object_id;
+                            if (Positions.ContainsKey(positionObjId))
+                                Positions[positionObjId] = positionMessage.positionPack.position;
+                            else
+                                Positions.Add(positionObjId, positionMessage.positionPack.position);
+                            break;
+                            /*
+                        case PacketOpcode.Evt_Physics__DeleteObject_ID:
+                            var deleteMessage = CM_Physics.DeleteObject.read(messageDataReader);
+                            uint delObjectId = deleteMessage.object_id;
+                            if (Positions.ContainsKey(delObjectId))
+                            {
+                                Position lastSeenPositionOfItem = Positions[delObjectId];
+                            }
+                            break;
+                            */
+
                     }
 
                     /*
@@ -363,12 +394,14 @@ namespace aclogview
                         containerName = containerName.Replace("Corpse of ", "");
                         containerName = containerName.Replace("Treasure of ", "");
 
+                        
+                        //uint containerWCID = GetParentWeenieFromCorpse(newObj, CreateObjectList, Positions);
                         string containerWCID;
                         if (newObj.wdesc._wcid == 21) // Remove the "Corpse" weenies
                             containerWCID = "";
                         else
                             containerWCID = newObj.wdesc._wcid.ToString();
-
+                        
                         // Cycle through all the contents of the container
                         for (int i = 0; i < e.Value.contents_list.list.Count; i++)
                         {
@@ -384,7 +417,31 @@ namespace aclogview
                                 uint lootWCID = co.wdesc._wcid;
                                 uint value = co.wdesc._value;
                                 uint materialId = (uint)co.wdesc._material_type;
-                                if (materialId > 0)
+
+                                string itemLevel = "";
+                                if (co.wdesc._iconOverlayID > 0)
+                                {
+                                    switch (co.wdesc._iconOverlayID)
+                                    {
+                                        case 0x06006C34:
+                                            itemLevel = "1";
+                                            break;
+                                        case 0x06006c35:
+                                            itemLevel = "2";
+                                            break;
+                                        case 0x06006c36:
+                                            itemLevel = "3";
+                                            break;
+                                        case 0x06006c37:
+                                            itemLevel = "4";
+                                            break;
+                                        case 0x06006c38:
+                                            itemLevel = "5";
+                                            break;
+                                    }
+                                }
+
+                                if (materialId > 0 || itemLevel != "")
                                 {
                                     string workmanship = "";
                                     if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.ITEM_WORKMANSHIP_INT))
@@ -408,6 +465,33 @@ namespace aclogview
 
                                     string itemType = co.wdesc._type.ToString();
 
+                                    string clothingPriority = "";
+                                    if(co.wdesc._priority > 0)
+                                        clothingPriority = co.wdesc._priority.ToString();
+                                    string locations = "";
+                                    if (co.wdesc._valid_locations > 0)
+                                        locations = co.wdesc._valid_locations.ToString();
+
+                                    string wieldReq = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.WIELD_REQUIREMENTS_INT))
+                                        wieldReq = app.i_prof._intStatsTable.hashTable[STypeInt.WIELD_REQUIREMENTS_INT].ToString();
+                                    string wieldSkillType = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.WIELD_SKILLTYPE_INT))
+                                        wieldSkillType = app.i_prof._intStatsTable.hashTable[STypeInt.WIELD_SKILLTYPE_INT].ToString();
+                                    string wieldDiff = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.WIELD_DIFFICULTY_INT))
+                                        wieldDiff = app.i_prof._intStatsTable.hashTable[STypeInt.WIELD_DIFFICULTY_INT].ToString();
+
+                                    string wieldReq2 = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.WIELD_REQUIREMENTS_2_INT))
+                                        wieldReq2 = app.i_prof._intStatsTable.hashTable[STypeInt.WIELD_REQUIREMENTS_2_INT].ToString();
+                                    string wieldSkillType2 = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.WIELD_SKILLTYPE_2_INT))
+                                        wieldSkillType2 = app.i_prof._intStatsTable.hashTable[STypeInt.WIELD_SKILLTYPE_2_INT].ToString();
+                                    string wieldDiff2 = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.WIELD_DIFFICULTY_2_INT))
+                                        wieldDiff2 = app.i_prof._intStatsTable.hashTable[STypeInt.WIELD_DIFFICULTY_2_INT].ToString();
+
                                     string weaponType = "";
                                     if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.WEAPON_TYPE_INT))
                                         weaponType = app.i_prof._intStatsTable.hashTable[STypeInt.WEAPON_TYPE_INT].ToString();
@@ -415,6 +499,7 @@ namespace aclogview
                                     string spellSet = "";
                                     if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.EQUIPMENT_SET_ID_INT))
                                         spellSet = app.i_prof._intStatsTable.hashTable[STypeInt.EQUIPMENT_SET_ID_INT].ToString();
+
 
                                     //theFile.WriteLine("container guid, container wcid, container name, loot guid, loot wcid, loot name, item type, weapon type, value, material, workmanship,num tinks, gem count, gem material, spell set, spells");
 
@@ -432,6 +517,20 @@ namespace aclogview
                                             numTinks + "," +
                                             gemCount + "," +
                                             gemMaterial + "," +
+
+                                            clothingPriority + "," +
+                                            locations + "," +
+
+                                            wieldReq + "," +
+                                            wieldSkillType + "," +
+                                            wieldDiff + "," +
+
+                                            wieldReq2 + "," +
+                                            wieldSkillType2 + "," +
+                                            wieldDiff2 + "," +
+
+                                            itemLevel + "," +
+
                                             spellSet + "," +
                                             spells;
                                     results.Add(result);
@@ -449,6 +548,15 @@ namespace aclogview
 
 
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
+        }
+
+        private uint GetParentWeenieFromCorpse(CM_Physics.CreateObject co, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, Position> Positions)
+        {
+
+
+
+
+            return 0;
         }
 
         private void timer1_Tick(object sender, EventArgs e)
