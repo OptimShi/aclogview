@@ -110,8 +110,8 @@ namespace aclogview
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
-                theFile.Write("container guid, container wcid, container name, loot guid, loot wcid, loot name, item type, weapon type, value, material, workmanship,num tinks, gem count, gem material,");
-                theFile.WriteLine("clothingPriority,locations,wieldReq,wieldSkillType,wieldDiff,wieldReq2,wieldSkillType2,wieldDiff2,item level,spell set, spells");
+                theFile.Write("container guid, container wcid, container name, loot guid, loot wcid, loot name, item type, weapon type, description, value, material, workmanship,num tinks, gem count, gem material,");
+                theFile.WriteLine("clothingPriority,locations,wieldReq,wieldSkillType,wieldDiff,wieldReq2,wieldSkillType2,wieldDiff2,item level,spellcraft,difficulty,max mana,mana cost,spell set, spells");
             }
         }
 
@@ -244,6 +244,7 @@ namespace aclogview
 
         private void ProcessFile(string fileName)
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
             int hits = 0;
             int exceptions = 0;
 
@@ -318,52 +319,8 @@ namespace aclogview
                             else
                                 Positions.Add(positionObjId, positionMessage.positionPack.position);
                             break;
-                            /*
-                        case PacketOpcode.Evt_Physics__DeleteObject_ID:
-                            var deleteMessage = CM_Physics.DeleteObject.read(messageDataReader);
-                            uint delObjectId = deleteMessage.object_id;
-                            if (Positions.ContainsKey(delObjectId))
-                            {
-                                Position lastSeenPositionOfItem = Positions[delObjectId];
-                            }
-                            break;
-                            */
-
                     }
 
-                    /*
-                    if(opcode == PacketOpcode.VIEW_CONTENTS_EVENT)
-                    {
-                        var message = CM_Inventory.ViewContents.read(messageDataReader);
-                        // Check if we know what this item is and it is a Corpse
-                        if (Weenies.ContainsKey(message.i_container) && WCIDs[message.i_container] == 21)
-                        {
-                            string container = Weenies[message.i_container];
-
-                            // key is [Name of Container] + "," + WCID + "," + [LootName]
-                            // val is the number of hits
-                            for(int i = 0; i<message.contents_list.list.Count; i++)
-                            {
-                                var item = message.contents_list.list[i];
-                                // We've captured the CreateObject message for this item
-                                if (Weenies.ContainsKey(item.m_iid))
-                                {
-                                    container = container.Replace("Corpse of ", "");
-                                    container = container.Replace("Treasure of ", "");
-                                    string key = container + "," + Weenies[item.m_iid] + "";
-                                    if (!Loot.ContainsKey(key))
-                                    {
-                                        Loot.Add(key, 1);
-                                    }
-                                    else
-                                    {
-                                        Loot[key]++;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    */
                 }
                 catch
                 {
@@ -372,6 +329,14 @@ namespace aclogview
 
                     Interlocked.Increment(ref totalExceptions);
                 }
+            }
+
+            watch.Stop();
+            var elapsedMs = watch.ElapsedMilliseconds;
+            if (watch.Elapsed.Minutes > 1)
+            {
+                string outputLine = watch.Elapsed.Minutes.ToString() + " Minutes for Log file " + fileName;
+                richTextBox1.AppendText(outputLine + "\r\n");
             }
 
             // Store out text to dump in here... So just one write call per log
@@ -500,6 +465,31 @@ namespace aclogview
                                     if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.EQUIPMENT_SET_ID_INT))
                                         spellSet = app.i_prof._intStatsTable.hashTable[STypeInt.EQUIPMENT_SET_ID_INT].ToString();
 
+                                    string description = "";
+                                    if (app.i_prof._strStatsTable.hashTable.ContainsKey(STypeString.LONG_DESC_STRING))
+                                    {
+                                        description = app.i_prof._strStatsTable.hashTable[STypeString.LONG_DESC_STRING].m_buffer;
+                                        description = description.Replace("\"", "\"\""); // escape quotes with...another quote? CSV is weird.
+                                    }
+
+                                    string difficulty = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.ITEM_DIFFICULTY_INT))
+                                        difficulty = app.i_prof._intStatsTable.hashTable[STypeInt.ITEM_DIFFICULTY_INT].ToString();
+
+                                    string spellcraft = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.ITEM_SPELLCRAFT_INT))
+                                        spellcraft = app.i_prof._intStatsTable.hashTable[STypeInt.ITEM_SPELLCRAFT_INT].ToString();
+
+                                    string maxMana = "";
+                                    if (app.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.ITEM_MAX_MANA_INT))
+                                        maxMana = app.i_prof._intStatsTable.hashTable[STypeInt.ITEM_MAX_MANA_INT].ToString();
+
+                                    string manaCost = "";
+                                    if (app.i_prof._floatStatsTable.hashTable.ContainsKey(STypeFloat.MANA_RATE_FLOAT))
+                                        manaCost = app.i_prof._floatStatsTable.hashTable[STypeFloat.MANA_RATE_FLOAT].ToString();
+
+
+
 
                                     //theFile.WriteLine("container guid, container wcid, container name, loot guid, loot wcid, loot name, item type, weapon type, value, material, workmanship,num tinks, gem count, gem material, spell set, spells");
 
@@ -510,7 +500,8 @@ namespace aclogview
                                             lootWCID + "," +
                                             lootName + "," +
                                             itemType + "," +
-                                            weaponType + "," + 
+                                            weaponType + "," +
+                                            "\"" + description + "\"," +
                                             value + "," +
                                             materialId + "," +
                                             workmanship + "," +
@@ -530,6 +521,11 @@ namespace aclogview
                                             wieldDiff2 + "," +
 
                                             itemLevel + "," +
+
+                                            spellcraft + "," +
+                                            difficulty + "," +
+                                            maxMana + "," +
+                                            manaCost + "," +
 
                                             spellSet + "," +
                                             spells;
