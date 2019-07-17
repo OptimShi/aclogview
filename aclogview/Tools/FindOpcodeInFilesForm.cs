@@ -12,6 +12,8 @@ using System.Windows.Forms;
 
 using aclogview.Properties;
 using System.Text;
+using System.Diagnostics;
+using static CM_Physics.PublicWeenieDesc;
 
 namespace aclogview
 {
@@ -72,7 +74,6 @@ namespace aclogview
             }
         }
 
-
         private readonly List<string> filesToProcess = new List<string>();
         private int opCodeToSearchFor;
         private int filesProcessed;
@@ -88,14 +89,45 @@ namespace aclogview
         }
 
         private readonly ConcurrentBag<ProcessFileResult> processFileResults = new ConcurrentBag<ProcessFileResult>();
-        
+
         private readonly ConcurrentDictionary<string, int> specialOutputHits = new ConcurrentDictionary<string, int>();
         private readonly ConcurrentQueue<string> specialOutputHitsQueue = new ConcurrentQueue<string>();
+
+        //private Dictionary<MaterialType, uint> Materials = new Dictionary<MaterialType, uint>();
+        // key is WCID+","+Name of the speaker
+        // val is MessageText+","+ChatMessageType of text
+        //private Dictionary<string, string> Speech = new Dictionary<string, string>();
+
+        // key is [Name of Container] + "," + WCID + "," + [LootName]
+        // val is the number of hits
+        private Dictionary<string, uint> Loot = new Dictionary<string, uint>();
+
+        DateTime dt = DateTime.Now;
+
+        private string logFileName { get { return "D:\\Source\\Confirmation-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
+
+        private void ResetLogFile()
+        {
+            using (StreamWriter theFile = new StreamWriter(logFileName, false))
+            {
+                theFile.WriteLine("ConfirmationType,Message,LogFile");
+            }
+        }
+
+        private void SaveResultsToLogFile(List<string> results)
+        {
+            if (results.Count == 0) return;
+
+            using (StreamWriter theFile = new StreamWriter(logFileName, true))
+            {
+                for (var i = 0; i < results.Count; i++)
+                    theFile.WriteLine(results[i]);
+            }
+        }
 
         private void btnStartSearch_Click(object sender, EventArgs e)
         {
             dataGridView1.RowCount = 0;
-
             try
             {
                 btnStartSearch.Enabled = false;
@@ -111,13 +143,11 @@ namespace aclogview
                 while (!processFileResults.IsEmpty)
                     processFileResults.TryTake(out result);
 
-
                 specialOutputHits.Clear();
                 string specialOutputHitsResult;
                 while (!specialOutputHitsQueue.IsEmpty)
                     specialOutputHitsQueue.TryDequeue(out specialOutputHitsResult);
                 richTextBox1.Clear();
-
 
                 filesToProcess.AddRange(Directory.GetFiles(txtSearchPathRoot.Text, "*.pcap", SearchOption.AllDirectories));
                 filesToProcess.AddRange(Directory.GetFiles(txtSearchPathRoot.Text, "*.pcapng", SearchOption.AllDirectories));
@@ -130,15 +160,23 @@ namespace aclogview
                 btnStopSearch.Enabled = true;
 
                 timer1.Start();
+                Stopwatch watch = new Stopwatch();
+                watch.Start();
 
-                ThreadPool.QueueUserWorkItem((state) =>
-                {
-                    // Do the actual search here
-                    DoSearch();
+                // Clear the log file from any previous searches...
+                ResetLogFile();
 
-                    if (!Disposing && !IsDisposed)
-                        btnStopSearch.BeginInvoke((Action)(() => btnStopSearch_Click(null, null)));
-                });
+                // Do the actual search here
+                DoSearch();
+
+                watch.Stop();
+                string watchTimerText = watch.Elapsed.TotalSeconds.ToString();
+                TimeSpan ts = watch.Elapsed;
+                // Format and display the TimeSpan value.
+                string elapsedTime = String.Format("{0:00}:{1:00}:{2:00}.{3:00}",
+                    ts.Hours, ts.Minutes, ts.Seconds,
+                    ts.Milliseconds / 10);
+                MessageBox.Show("Log File Processing Complete.\n\n" + elapsedTime + "");
             }
             catch (Exception ex)
             {
@@ -163,41 +201,61 @@ namespace aclogview
             btnStopSearch.Enabled = false;
         }
 
-
         private void DoSearch()
         {
-            Parallel.ForEach(filesToProcess, (currentFile) =>
+            int progress = 0;
+            //filesToProcess.Clear(); filesToProcess.Add("d:\\Asheron's Call\\Log Files\\PCAP Part 1\\Julianna_pcap\\pkt_2017-1-30_1485830024_log.pcap");
+            foreach (string currentFile in filesToProcess)
             {
                 if (searchAborted || Disposing || IsDisposed)
                     return;
+
+                progress++;
+                LogProgress(progress, filesToProcess.Count, currentFile);
 
                 try
                 {
                     ProcessFile(currentFile);
                 }
                 catch { }
-            });
+            }
+        }
+
+        private void LogProgress(int progress, int total, string filename)
+        {
+            using (StreamWriter theFile = new StreamWriter("D:\\Source\\aclogview_progress.txt", false))
+            {
+                //Calculate percentage earlier in code
+                decimal percentage = (decimal)progress / total;
+                theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
+                theFile.WriteLine(filename);
+            }
+        }
+
+        // Gets a CSV string containing the info we are looking for!
+        private string GetValueFromCreateObj(CM_Physics.CreateObject item, CM_Physics.CreateObject wielder)
+        {
+            string value = "";
+            // WCID,Name,Wield WCID,Wield Name
+            value = wielder.wdesc._wcid.ToString() + ",\"" + wielder.wdesc._name + "\"," + item.wdesc._wcid.ToString() + ",\"" + item.wdesc._name + "\"";
+            return value;
         }
 
         private void ProcessFile(string fileName)
         {
             int hits = 0;
             int exceptions = 0;
-            bool isPcapng = false;
+            bool isPcappng = false;
+            var records = PCapReader.LoadPcap(fileName, true, ref searchAborted, ref isPcappng);
 
-            var records = PCapReader.LoadPcap(fileName, true, ref searchAborted, ref isPcapng);
+            List<string> results = new List<string>();
+
+            string logFilename = fileName.Replace("D:\\Asheron's Call\\Log Files\\", "");
 
             foreach (PacketRecord record in records)
             {
                 if (searchAborted || Disposing || IsDisposed)
                     return;
-
-                if (record.opcodes.Contains((PacketOpcode)opCodeToSearchFor))
-                {
-                    hits++;
-
-                    Interlocked.Increment(ref totalHits);
-                }
 
                 // ********************************************************************
                 // ************************ CUSTOM SEARCH CODE ************************ 
@@ -210,143 +268,19 @@ namespace aclogview
                     if (record.data.Length <= 4)
                         continue;
 
-                    using (BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data)))
+                    BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data));
+
+                    PacketOpcode opcode = Util.readOpcode(messageDataReader);
+
+                    // Store all the created weenies!
+                    switch (opcode)
                     {
-                        var messageCode = messageDataReader.ReadUInt32();
+                        case PacketOpcode.Evt_Character__ConfirmationRequest_ID:
+                            var message = CM_Character.ConfirmationRequest.read(messageDataReader);
+                            string LogText = message.confirm.ToString() + ",\"" + message.userData.m_buffer.Replace("\"", "\"\"") + "\"," + logFilename;
+                            results.Add(LogText);
+                            break;
 
-                        //if (messageCode == (uint)PacketOpcode.Evt_Movement__MovementEvent_ID)
-                        //{
-                        //    var parsed = CM_Movement.MovementEvent.read(messageDataReader);
-
-                        //    if (parsed.movement_data.movementData_Unpack.movement_type == MovementTypes.Type.MoveToObject && $"{parsed.object_id:X8}".StartsWith("50"))
-                        //    {
-                        //        var output = $"{parsed.object_id:X8},{parsed.movement_data.movementData_Unpack.moveToObject:X8},{parsed.movement_data.movementData_Unpack.style},{parsed.movement_data.movementData_Unpack.movement_params.distance_to_object},{fileName},{record.index}";
-
-                        //        if (!specialOutputHits.ContainsKey(parsed.movement_data.movementData_Unpack.movement_params.distance_to_object.ToString() + parsed.movement_data.movementData_Unpack.style))
-                        //        {
-                        //            if (specialOutputHits.TryAdd(parsed.movement_data.movementData_Unpack.movement_params.distance_to_object.ToString() + parsed.movement_data.movementData_Unpack.style, 0))
-                        //                specialOutputHitsQueue.Enqueue(output);
-                        //        }
-                        //    }
-                        //}
-
-                        /*if (messageCode == 0x02BB) // Creature Message
-                        {
-                            var parsed = CM_Communication.HearSpeech.read(messageDataReader);
-
-                            //if (parsed.ChatMessageType != 0x0C)
-                            //    continue;
-
-                            var output = parsed.ChatMessageType.ToString("X4") + " " + parsed.MessageText;
-
-                            if (!specialOutputHits.ContainsKey(output))
-                            {
-                                if (specialOutputHits.TryAdd(output, 0))
-                                    specialOutputHitsQueue.Enqueue(output);
-                            }
-                        }*/
-
-                        /*if (messageCode == 0xF745) // Create Object
-                        {
-                            var parsed = CM_Physics.CreateObject.read(messageDataReader);
-                        }*/
-
-                        /*if (messageCode == 0xF7B0) // Game Event
-                        {
-                            var character = messageDataReader.ReadUInt32(); // Character
-                            var sequence = messageDataReader.ReadUInt32(); // Sequence
-                            var _event = messageDataReader.ReadUInt32(); // Event
-
-                            if (_event == 0x0147) // Group Chat
-                            {
-                                var parsed = CM_Communication.ChannelBroadcast.read(messageDataReader);
-
-                                var output = parsed.GroupChatType.ToString("X4");
-                                if (!specialOutputHits.ContainsKey(output))
-                                {
-                                    if (specialOutputHits.TryAdd(output, 0))
-                                        specialOutputHitsQueue.Enqueue(output);
-                                }
-                            }
-
-                            if (_event == 0x02BD) // Tell
-                            {
-                                var parsed = CM_Communication.HearDirectSpeech.read(messageDataReader);
-
-                                var output = parsed.ChatMessageType.ToString("X4");
-
-                                if (!specialOutputHits.ContainsKey(output))
-                                {
-                                    if (specialOutputHits.TryAdd(output, 0))
-                                        specialOutputHitsQueue.Enqueue(output);
-                                }
-                            }
-                        }*/
-
-                        //if (messageCode == 0xF7B1) // Game Action
-                        //{
-                        //    var sequence = messageDataReader.ReadUInt32(); // Sequence
-                        //    var opcode = messageDataReader.ReadUInt32(); // Opcode
-
-                        //    if (opcode == 0x0036) // Use event
-                        //    {
-                        //        var parsed = CM_Inventory.UseEvent.read(messageDataReader);
-
-                        //        var object_id = parsed.i_object;
-
-                        //        for (int i = record.index; i > 0; i--)
-                        //        {
-                        //            using (BinaryReader comessageDataReader = new BinaryReader(new MemoryStream(records[i].data)))
-                        //            {
-                        //                var msgCode = comessageDataReader.ReadUInt32();
-
-                        //                if (msgCode == 0xF745) // Create Object
-                        //                {
-                        //                    var parsedco = CM_Physics.CreateObject.read(comessageDataReader);
-
-                        //                    if (parsedco.wdesc._type == ITEM_TYPE.TYPE_PORTAL && parsedco.object_id == object_id)
-                        //                    {
-                        //                        var output = $"{parsedco.wdesc._name.m_buffer},{fileName},{record.index}";
-
-                        //                        if (!specialOutputHits.ContainsKey(output))
-                        //                        {
-                        //                            if (specialOutputHits.TryAdd(output, 0))
-                        //                                specialOutputHitsQueue.Enqueue(output);
-                        //                        }
-                        //                        break;
-                        //                    }
-                        //                }
-                        //            }
-                        //        }
-                        //    } 
-                        //}
-
-                        /*if (messageCode == 0xF7DE) // TurbineChat
-                        {
-                            var parsed = CM_Admin.ChatServerData.read(messageDataReader);
-
-                            string output = parsed.TurbineChatType.ToString("X2");
-
-                            if (!specialOutputHits.ContainsKey(output))
-                            {
-                                if (specialOutputHits.TryAdd(output, 0))
-                                    specialOutputHitsQueue.Enqueue(output);
-                            }
-                        }*/
-
-                        /*if (messageCode == 0xF7E0) // Server Message
-                        {
-                            var parsed = CM_Communication.TextBoxString.read(messageDataReader);
-
-                            var output = parsed.ChatMessageType.ToString("X4") + " " + parsed.MessageText + ",";
-                            var output = parsed.ChatMessageType.ToString("X4");
-
-                            if (!specialOutputHits.ContainsKey(output))
-                            {
-                                if (specialOutputHits.TryAdd(output, 0))
-                                    specialOutputHitsQueue.Enqueue(output);
-                            }
-                        }*/
                     }
                 }
                 catch
@@ -358,39 +292,27 @@ namespace aclogview
                 }
             }
 
+            if (results.Count > 0)
+                SaveResultsToLogFile(results);
+
             Interlocked.Increment(ref filesProcessed);
 
-            processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
+
+            //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
+        }
+
+        private uint GetParentWeenieFromCorpse(CM_Physics.CreateObject co, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, Position> Positions)
+        {
+
+
+
+
+            return 0;
         }
 
         private void timer1_Tick(object sender, EventArgs e)
         {
-            ProcessFileResult result;
-            while (!processFileResults.IsEmpty)
-            {
-                if (processFileResults.TryTake(out result))
-                {
-                    var length = new FileInfo(result.FileName).Length;
 
-                    if (result.Hits > 0 || result.Exceptions > 0)
-                        dataGridView1.Rows.Add(result.Hits, result.Exceptions, length, result.FileName);
-                }
-            }
-
-            string specialOutputHitsQueueResult;
-            StringBuilder specialOutput = new StringBuilder();
-            while (!specialOutputHitsQueue.IsEmpty)
-            {
-                if (specialOutputHitsQueue.TryDequeue(out specialOutputHitsQueueResult))
-                    specialOutput.AppendLine(specialOutputHitsQueueResult);
-            }
-            richTextBox1.AppendText(specialOutput.ToString());
-
-            toolStripStatusLabel1.Text = "Files Processed: " + filesProcessed.ToString("N0") + " of " + filesToProcess.Count.ToString("N0");
-
-            toolStripStatusLabel2.Text = "Total Hits: " + totalHits.ToString("N0");
-
-            toolStripStatusLabel3.Text = "Message Exceptions: " + totalExceptions.ToString("N0");
         }
 
         private void dataGridView1_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
