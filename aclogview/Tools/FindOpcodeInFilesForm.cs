@@ -100,29 +100,28 @@ namespace aclogview
 
         // key is [Name of Container] + "," + WCID + "," + [LootName]
         // val is the number of hits
-        private Dictionary<string, uint> Loot = new Dictionary<string, uint>();
+        private Dictionary<string, uint> Creatures = new Dictionary<string, uint>();
 
         DateTime dt = DateTime.Now;
 
-        private string logFileName { get { return "D:\\Source\\Treasure-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
+        private string logFileName { get { return "D:\\Source\\DamageRatingsLandblock-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
-                theFile.Write("container guid, container wcid, container name, container landblock,loot guid, loot wcid, loot name, item type, weapon type, description, value, material, workmanship,num tinks, gem count, gem material,");
-                theFile.WriteLine("clothingPriority,locations,wieldReq,wieldSkillType,wieldDiff,wieldReq2,wieldSkillType2,wieldDiff2,item level,spellcraft,difficulty,max mana,mana cost,spell set, spells");
+                theFile.WriteLine("wcid,name,damage rating,landblock,hits");
             }
         }
 
-        private void SaveResultsToLogFile(List<string> results)
+        private void SaveResultsToLogFile()
         {
-            if (results.Count == 0) return;
+            if (Creatures.Count == 0) return;
 
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                for (var i = 0; i < results.Count; i++)
-                    theFile.WriteLine(results[i]);
+                foreach (var e in Creatures)
+                    theFile.WriteLine(e.Key + "," + e.Value);
             }
         }
 
@@ -220,6 +219,8 @@ namespace aclogview
                 }
                 catch { }
             }
+
+            SaveResultsToLogFile();
         }
 
         private void LogProgress(int progress, int total, string filename)
@@ -230,16 +231,8 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("Loot Entries: " + Loot.Count.ToString());
+                theFile.WriteLine("Creature Entries: " + Creatures.Count.ToString());
             }
-        }
-
-        // Gets a CSV string containing the info we are looking for!
-        private string GetValueFromCreateObj(CM_Physics.CreateObject item, CM_Physics.CreateObject wielder) {
-            string value = "";
-            // WCID,Name,Wield WCID,Wield Name
-            value = wielder.wdesc._wcid.ToString() + ",\"" + wielder.wdesc._name + "\"," + item.wdesc._wcid.ToString() + ",\"" + item.wdesc._name + "\"";
-            return value;
         }
 
         private void ProcessFile(string fileName)
@@ -250,19 +243,15 @@ namespace aclogview
 
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted);
 
-            Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList = new Dictionary<uint, CM_Examine.SetAppraiseInfo>(); // key is objectId
             Dictionary<uint, CM_Physics.CreateObject> CreateObjectList = new Dictionary<uint, CM_Physics.CreateObject>(); // key is objectId
-            Dictionary<uint, CM_Inventory.ViewContents> ViewContentsList = new Dictionary<uint, CM_Inventory.ViewContents>(); // key is ContainerID
-
-            Dictionary<uint, Position> Positions = new Dictionary<uint, Position>(); // key is GUID, value is the last seen position of the item
-
-            Dictionary<uint, uint> WeenieMap = new Dictionary<uint, uint>(); // key is corpse GUID, value is weenie GUID
 
             // Store out text to dump in here... So just one write call per log
             List<string> results = new List<string>();
 
+            int packetCount = 0;
             foreach (PacketRecord record in records)
             {
+                packetCount++;
                 if (searchAborted || Disposing || IsDisposed)
                     return;
 
@@ -284,43 +273,64 @@ namespace aclogview
                     // Store all the created weenies!
                     switch (opcode)
                     {
+                        case PacketOpcode.Evt_Physics__DeleteObject_ID:
+                            var delMessage = CM_Physics.DeleteObject.read(messageDataReader);
+                            uint delObjectId = delMessage.object_id;
+                            if (CreateObjectList.ContainsKey(delObjectId))
+                            {
+                                CreateObjectList.Remove(delObjectId);
+                            }
+                            break;
                         case PacketOpcode.Evt_Physics__CreateObject_ID:
                             var message = CM_Physics.CreateObject.read(messageDataReader);
                             uint objectId = message.object_id;
-                            if (CreateObjectList.ContainsKey(objectId))
+
+                            // Check if the item is a creature and NOT a player
+                            if(message.wdesc._type == ITEM_TYPE.TYPE_CREATURE && message.wdesc._wcid != 1)
                             {
-                                CreateObjectList[objectId] = message;
-                                Positions[objectId] = message.physicsdesc.pos;
-                            }
-                            else
-                            {
-                                CreateObjectList.Add(objectId, message);
-                                Positions.Add(objectId, message.physicsdesc.pos);
+                                if (CreateObjectList.ContainsKey(objectId))
+                                {
+                                    CreateObjectList[objectId] = message;
+                                }
+                                else
+                                {
+                                    CreateObjectList.Add(objectId, message);
+                                }
                             }
                             break;
                         case PacketOpcode.APPRAISAL_INFO_EVENT:
                             var appraisalMessage = CM_Examine.SetAppraiseInfo.read(messageDataReader);
                             uint appraisalID = appraisalMessage.i_objid;
-                            if (AppraisalList.ContainsKey(appraisalID))
-                                AppraisalList[appraisalID] = appraisalMessage;
-                            else
-                                AppraisalList.Add(appraisalID, appraisalMessage);
-                            break;
-                        case PacketOpcode.VIEW_CONTENTS_EVENT:
-                            var viewContentsMessage = CM_Inventory.ViewContents.read(messageDataReader);
-                            uint containerId = viewContentsMessage.i_container;
-                            string getResultToAdd = AddToResults(viewContentsMessage, CreateObjectList, AppraisalList);
-                            // make sure our result is not empty and not already in the list!
-                            if (getResultToAdd != "" && results.IndexOf(getResultToAdd) == -1)
-                                results.Add(getResultToAdd);
-                            break;
-                        case PacketOpcode.Evt_Movement__UpdatePosition_ID:
-                            var positionMessage = CM_Movement.UpdatePosition.read(messageDataReader);
-                            var positionObjId = positionMessage.object_id;
-                            if (Positions.ContainsKey(positionObjId))
-                                Positions[positionObjId] = positionMessage.positionPack.position;
-                            else
-                                Positions.Add(positionObjId, positionMessage.positionPack.position);
+                            if (appraisalMessage.i_prof.success_flag == 1 && CreateObjectList.ContainsKey(appraisalID))
+                            {
+                                string result = CreateObjectList[appraisalID].wdesc._wcid + ",\"" + CreateObjectList[appraisalID].wdesc._name + "\",";
+                                uint wcid = CreateObjectList[appraisalID].wdesc._wcid;
+                                int damageRating = 0;
+                                if (appraisalMessage.i_prof._intStatsTable.hashTable.ContainsKey(STypeInt.DAMAGE_RATING_INT))
+                                {
+                                    damageRating = appraisalMessage.i_prof._intStatsTable.hashTable[STypeInt.DAMAGE_RATING_INT];
+                                    result += appraisalMessage.i_prof._intStatsTable.hashTable[STypeInt.DAMAGE_RATING_INT];
+                                }
+                                /*
+                                if(wcid == 194 && damageRating == 5)
+                                {
+                                    var alertMessage = fileName + "\r\n" + "Line " + packetCount.ToString() + "\r\n";
+                                    richTextBox1.AppendText(alertMessage);
+                                    MessageBox.Show(alertMessage);
+                                }
+                                */
+                                result += "," + CreateObjectList[appraisalID].physicsdesc.pos.objcell_id.ToString("X8");
+
+                                if (Creatures.ContainsKey(result))
+                                {
+                                    Creatures[result]++;
+                                }
+                                else
+                                {
+                                    Creatures[result] = 1;
+                                }
+                                //results.Add(result);
+                            }
                             break;
                     }
 
@@ -341,9 +351,6 @@ namespace aclogview
                 string outputLine = watch.Elapsed.Minutes.ToString() + " Minutes for Log file " + fileName;
                 richTextBox1.AppendText(outputLine + "\r\n");
             }
-
-            if(results.Count > 0)
-                SaveResultsToLogFile(results);
 
             Interlocked.Increment(ref filesProcessed);
 
