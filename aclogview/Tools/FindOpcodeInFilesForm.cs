@@ -166,7 +166,8 @@ namespace aclogview
 
         private void DoSearch()
         {
-            Parallel.ForEach(filesToProcess, (currentFile) =>
+            //Parallel.ForEach(filesToProcess, (currentFile) =>
+            foreach (string currentFile in filesToProcess)
             {
                 if (searchAborted || Disposing || IsDisposed)
                     return;
@@ -176,7 +177,7 @@ namespace aclogview
                     ProcessFile(currentFile);
                 }
                 catch { }
-            });
+            }
         }
 
         private void ProcessFile(string fileName)
@@ -186,6 +187,9 @@ namespace aclogview
             bool isPcapng = false;
 
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted, ref isPcapng);
+
+            Dictionary<uint, string> squelchDB = new Dictionary<uint, string>();
+            uint currentCharacterID = 0;
 
             foreach (PacketRecord record in records)
             {
@@ -212,7 +216,32 @@ namespace aclogview
 
                     using (BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data)))
                     {
-                        var messageCode = messageDataReader.ReadUInt32();
+                        //var messageCode = messageDataReader.ReadUInt32();
+                        PacketOpcode opcode = Util.readOpcode(messageDataReader);
+
+                        switch (opcode)
+                        {
+                            case PacketOpcode.CHARACTER_ENTER_GAME_EVENT:
+                                var enterGame = Proto_UI.EnterWorld.read(messageDataReader);
+                                currentCharacterID = enterGame.gid;
+                                break;
+                            case PacketOpcode.Evt_Communication__SetSquelchDB_ID:
+                                var squelch = CM_Communication.SetSquelchDB.read(messageDataReader);
+                                string newSquelchList = "";
+                                for (var i = 0; i < squelch.character_num_buckets; i++)
+                                    newSquelchList += squelch.character_list[i].character_info.name + ", ";
+
+                                if (newSquelchList != "")
+                                    squelchDB.Add(currentCharacterID, newSquelchList);
+
+                                if (squelchDB.Count > 1)
+                                {
+                                    MessageBox.Show(fileName);
+                                    if (specialOutputHits.TryAdd(fileName, 0))
+                                        specialOutputHitsQueue.Enqueue(fileName);
+                                }
+                                break;
+                        }
 
                         //if (messageCode == (uint)PacketOpcode.Evt_Movement__MovementEvent_ID)
                         //{
