@@ -79,216 +79,15 @@ namespace aclogview
         private int totalExceptions;
         private bool searchAborted;
 
-        public List<int> SpellsToFind = new List<int>(){
-                3581, // Secrets of Liazk Itzi's Temple
-                3826, // a powerful force
-                3846, // Ruined Access
-                3847, // Cataracts of Xik Minru
-                3865, // Glenden Wood Recall
-                3868, // Dardante's Keep Portal Sending
-                3887, // Entering the Hatch
-                3888, // Passage to the Rare Chambers
-                3889, // Inner Burial Chamber Portal Sending
-                3898, // Pooky's Recall 1
-                3899, // Pooky's Recall 2
-                3900, // Pooky's Recall 3
-                3912, // Lower Black Spear Temple Portal Sending
-                3920, // Tunnels to the Harbinger
-                3921, // Harbinger's Lair
-                3922, // Tunnels to the Harbinger
-                3923, // Tunnels to the Harbinger
-                3924, // Tunnels to the Harbinger
-                3925, // Harbinger's Lair
-                3929, // Rossu Morta Chapterhouse Recall
-                3930, // Whispering Blade Chapterhouse Recall
-                3954, // Access to the White Tower
-                3958, // White Tower Egress
-                3966, // Ringleader's Chambers
-                3967, // Bandit Trap
-                3968, // Bandit Hideout
-                4012, // White Totem Temple Sending
-                4013, // Black Totem Temple Sending
-                4014, // Abyssal Totem Temple Sending
-                4023, // Disco Inferno Portal Sending
-                4029, // Return to the Hall of Champions
-                4030, // Colosseum Arena
-                4031, // Advanced Colosseum Arena
-                4032, // Colosseum Arena
-                4033, // Advanced Colosseum Arena
-                4034, // Colosseum Arena
-                4035, // Advanced Colosseum Arena
-                4036, // Colosseum Arena
-                4037, // Advanced Colosseum Arena
-                4038, // Colosseum Arena
-                4039, // Advanced Colosseum Arena
-                4041, // The Path to Bur
-                4042, // The Winding Path to Bur
-                4063, // Exit the Upper Catacomb
-                4064, // Access the Upper Catacomb
-                4065, // Lower Catacomb Portal Sending
-                4066, // Access to the Ley Line Cavern
-                4079, // Work it Off
-                4080, // Paid in Full
-                4083, // Kresovus' Warren Portal Sending
-                4084, // Bur Recall
-                4085, // Entering Harraag's Hideout
-                4098, // Treasure Room
-                4103, // Black Water Portal Sending
-                4104, // Champion Arena
-                4105, // Champion Arena
-                4106, // Travel to the Paradox-touched Olthoi Queen's Lair
-                4127, // Portal Punch
-                4128, // Call of the Mhoire Forge
-                4129, // Travel to the Prodigal Shadow Child's Lair
-                4130, // Travel to the Prodigal Shadow Child's Sanctum
-                4145, // Crossing the Threshold of Darkness
-                4146, // Crossing the Threshold of Darkness
-                4147, // Crossing the Threshold of Darkness
-                4148, // Crossing the Threshold of Darkness
-                4149, // Crossing the Threshold of Darkness
-                4150, // Expulsion from Claude's Mind
-                4176, // Prodigal Harbinger's Lair
-                4177, // Prodigal Harbinger's Antechamber
-                4178, // Prodigal Harbinger's Antechamber
-                4179, // Prodigal Harbinger's Antechamber
-                4180, // Prodigal Harbinger's Antechamber
-                4198, // Paradox-touched Olthoi Infested Area Recall
-                4200, // Into the Darkness
-                4203, // Dark Crypt Entrance
-                4204, // Dark Crypt Entrance
-                4205, // Dark Crypt Entrance
-                4207, // Arena of the Pumpkin King
-                //4213, // Colosseum Recall
-                //4214, // Return to the Keep
-                4218, // Knockback
-                4219, // Trial of the Arm
-                4220, // Trial of the Heart
-                4222, // Chambers Beneath
-                4223, // Trials Graduation Chamber
-                4224, // Trial of the Mind
-                4225, // Trials of the Arm, Mind and Heart
-                4228, // Awakening
-                4229, // Journey Into the Past
-                4230, // Bael'Zharon Dream Sending
-                4233, // Aerbax Recall Center Platform
-                4234, // Aerbax Recall East Platform
-                4235, // Aerbax Recall North Platform
-                4236, // Aerbax Recall South Platform
-                4237, // Aerbax Recall West Platform
-                4238, // Aerbax Expulsion
-                4247, // Tanada Battle Burrows Portal Sending
-                4248, // Shroud Cabal North Outpost Sending
-                4249, // Shroud Cabal South Outpost Sending
-                4250, // Aerbax's Platform
-                4251, // Jester's Boot
-                4252, // Entrance to the Jester's Cell
-                4253, // Entrance to the Jester's Cell
-                4254, // Jester's Prison Hallway
-                4255, // Jester's Prison Entryway
-                4256, // Jester Recall 1
-                4257, // Jester Recall 2
-                4258, // Jester Recall 3
-                4259, // Jester Recall 4
-                4260, // Jester Recall 5
-                4261, // Jester Recall 6
-                4262, // Jester Recall 7
-                4263, // Jester Recall 8
-                4277, // Jester's Prison Access
-                4278, // Rytheran's Library Portal Sending
-                4289, // Access the Messenger's Sanctuary
-                4717, // Expedient Return to Ulgrim
-                4718, // Welcomed by the Blood Witches
-                4719, // Welcomed by the Blood Witches
-                4720, // Welcomed by the Blood Witches
-                4721, // Travel to the Ruins of Degar'Alesh
-                4724, // Gateway to Nyr'leha
-                4725, // The Pit of Heretics
-                4729, // Travel to the Catacombs of Tar'Kelyn
-                4907, // Celestial Hand Stronghold Recall
-                4908, // Eldrytch Web Stronghold Recall
-                4909, // Radiant Blood Stronghold Recall
-                4913, // Aerlinthe Pyramid Portal Sending
-                4914, // Aerlinthe Pyramid Portal Exit
-                4915, // A'mun Pyramid Portal Sending
-                4916, // A'mun Pyramid Portal Exit
-                4917, // Esper Pyramid Portal Sending
-                4918, // Esper Pyramid Portal Exit
-                4919, // Halaetan Pyramid Portal Sending
-                4920, // Halaetan Pyramid Portal Exit
-                4921, // Linvak Pyramid Portal Sending
-                4922, // Linvak Pyramid Portal Exit
-                4923, // Obsidian Pyramid Portal Sending
-                4924, // Obsidian Pyramid Portal Exit
-                4950, // Tactical Defense
-                4951, // Tactical Defense
-                4952, // Tactical Defense
-                4953, // Test Portal
-                4954, // Crystalline Portal
-                4955, // Portal Space Eddy
-                4956, // Tanada Sanctum Portal Sending
-                4957, // Tanada Sanctum Return
-                4988, // Tunnel Out
-                4989, // Mysterious Portal
-                4990, // Floor Puzzle Bypass
-                4991, // Jump Puzzle Bypass
-                4992, // Direct Assassin Access
-                4993, // Portal to Derethian Combat Arena
-                4994, // Get over here!
-                4995, // Portal to Derethian Combat Arena
-                4996, // Portal to Derethian Combat Arena
-                4997, // Portal to Derethian Combat Arena
-                5008, // Apostate Nexus Portal Sending
-                5010, // Entering Aerfalle's Sanctum
-                5012, // Mar'uun
-                5013, // Mar'uun
-                5014, // Mar'uun
-                5015, // Mar'uun
-                5016, // Mar'uun
-                5017, // Mar'uun
-                5018, // Story of the Unknown Warrior
-                5019, // Portalspace Rift
-                5020, // Portalspace Rift
-                5021, // Portalspace Rift
-                5022, // Portalspace Rift
-                5160, // Mhoire Castle
-                5161, // Mhoire Castle Great Hall
-                5162, // Mhoire Castle Northeast Tower
-                5163, // Mhoire Castle Northwest Tower
-                5164, // Mhoire Castle Southeast Tower
-                5165, // Mhoire Castle Southwest Tower
-                5167, // Mhoire Castle Exit Portal
-                5168, // a spectacular view of the Mhoire lands
-                5169, // a descent into the Mhoire catacombs
-                5170, // a descent into the Mhoire catacombs
-                5176, // Celestial Hand Basement
-                5177, // Radiant Blood Basement
-                5178, // Eldrytch Web Basement
-                5179, // Celestial Hand Basement
-                5180, // Radiant Blood Basement
-                5181, // Eldrytch Web Basement
-                5330, // Gear Knight Invasion Area Camp Recall
-                5533, // Entering Lord Kastellar's Lab
-                5534, // Entering the Bloodstone Factory
-                5539, // Warded Cavern Passage
-                5540, // Warded Dungeon Passage
-                5541, // Lost City of Neftet Recall
-                6032, // Imprisoned
-                6033, // Impudence
-                6034, // Proving Grounds Rolling Death
-                6147, // Entrance to the Frozen Valley
-                6148, // Begone and Be Afraid
-                6149, // Rynthid Vision
-                //6150, // Rynthid Recall
-                6154, // Entering the Basement
-                6183, // Return to the Stronghold
-                6184, // Return to the Stronghold
-                6185, // Return to the Stronghold
-                6321, // Viridian Rise Recall
-                6322, // Viridian Rise Great Tree Recall
-                6325, // Celestial Hand Stronghold Recall
-                6326, // Eldrytch Web Stronghold Recall
-                6327, // Radiant Blood Stronghold Recall
-            };
+        public List<uint> ItemsToFind = new List<uint>()
+        {
+            33463, // Rossu Morta Chapterhouse Recall Orb
+            33484, // Whispering Blade Chapterhouse Recall Orb
+            37088, // Invitation to the Battle Burrows
+            40575, // Assassin's Recall Gem
+            51372, // Frozen Valley Portal Gem
+            53450, // Viridian Rise Deru Portal Sending Gem
+        };
 
         private class ProcessFileResult
         {
@@ -315,7 +114,7 @@ namespace aclogview
             public Dictionary<string, uint> log = new Dictionary<string, uint>();
         }
 
-        private Dictionary<SpellID, RecallGroup> TeleportSpells = new Dictionary<SpellID, RecallGroup>();
+        private List<string> ItemsFound = new List<string>();
 
         DateTime dt = DateTime.Now;
 
@@ -324,23 +123,11 @@ namespace aclogview
         private void ResetLogFile()
         {
             return;
-            using (StreamWriter theFile = new StreamWriter(logFileName, false))
-            {
-                theFile.Write("container guid, container wcid, container name, container landblock,loot guid, loot wcid, loot name, item type, weapon type, description, value, material, workmanship,num tinks, gem count, gem material,");
-                theFile.WriteLine("clothingPriority,locations,wieldReq,wieldSkillType,wieldDiff,wieldReq2,wieldSkillType2,wieldDiff2,item level,spellcraft,difficulty,max mana,mana cost,spell set, spells");
-            }
         }
 
         private void SaveResultsToLogFile(List<string> results)
         {
             return;
-            if (results.Count == 0) return;
-
-            using (StreamWriter theFile = new StreamWriter(logFileName, true))
-            {
-                for (var i = 0; i < results.Count; i++)
-                    theFile.WriteLine(results[i]);
-            }
         }
 
         private void btnStartSearch_Click(object sender, EventArgs e)
@@ -447,13 +234,11 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("Portal Spells Found: " + TeleportSpells.Count.ToString());
-                foreach(var ts in TeleportSpells)
+                theFile.WriteLine("Items Found: " + ItemsFound.Count.ToString());
+                theFile.WriteLine("*******************");
+                foreach (var ts in ItemsFound)
                 {
-                    theFile.WriteLine("*******************");
-                    theFile.WriteLine(ts.Value.spellId);
-                    foreach (var e in ts.Value.log)
-                        theFile.WriteLine(e.Key + " record " + e.Value);
+                    theFile.WriteLine(ts);
                 }
             }
         }
@@ -473,6 +258,8 @@ namespace aclogview
             int exceptions = 0;
 
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted);
+
+            Dictionary<uint, CM_Physics.CreateObject> CreateObjectList = new Dictionary<uint, CM_Physics.CreateObject>();
 
             // Store out text to dump in here... So just one write call per log
             uint recordIndex = 0;
@@ -500,58 +287,35 @@ namespace aclogview
                     // Store all the created weenies!
                     switch (opcode)
                     {
-                        case PacketOpcode.Evt_Magic__CastTargetedSpell_ID:
-                            var targetedSpell = CM_Magic.CastTargetedSpell.read(messageDataReader);
-                            int spellId = (int)targetedSpell.i_spell_id;
-                            if(SpellsToFind.IndexOf(spellId) != -1)
-                            {
-                                if (!TeleportSpells.ContainsKey((SpellID)spellId)){
-                                    TeleportSpells.Add((SpellID)spellId, new RecallGroup());
-                                    TeleportSpells[(SpellID)spellId].spellId = (SpellID)spellId;
-                                }
-                                TeleportSpells[(SpellID)spellId].log.Add(fileName, recordIndex);
-                            }
-                            break;
-                        /*
                         case PacketOpcode.Evt_Physics__CreateObject_ID:
                             var message = CM_Physics.CreateObject.read(messageDataReader);
                             uint objectId = message.object_id;
-                            if (CreateObjectList.ContainsKey(objectId))
+                            uint createWcid = message.wdesc._wcid;
+                            // We'll add this item to our list if it's one of the things we are looking for...
+                            if (ItemsToFind.Contains(createWcid))
                             {
-                                CreateObjectList[objectId] = message;
-                                Positions[objectId] = message.physicsdesc.pos;
+                                if (CreateObjectList.ContainsKey(objectId))
+                                    CreateObjectList[objectId] = message;
+                                else
+                                    CreateObjectList.Add(objectId, message);
                             }
-                            else
+                            break;
+                        case PacketOpcode.Evt_Physics__DeleteObject_ID:
+                            var deleteMessage = CM_Physics.DeleteObject.read(messageDataReader);
+                            var deleteObjectId = deleteMessage.object_id;
+                            if (CreateObjectList.ContainsKey(deleteObjectId))
+                                CreateObjectList.Remove(deleteObjectId);
+                            break;
+                        case PacketOpcode.Evt_Inventory__UseWithTargetEvent_ID:
+                            var useMessage = CM_Inventory.UseWithTargetEvent.read(messageDataReader);
+                            var useObjectId = useMessage.i_object;
+                            if (CreateObjectList.ContainsKey(useObjectId))
                             {
-                                CreateObjectList.Add(objectId, message);
-                                Positions.Add(objectId, message.physicsdesc.pos);
+                                // SOMEBODY USED ONE OF OUR THINGS!
+                                var itemString = CreateObjectList[useObjectId].wdesc._name + " " + fileName + " log " + recordIndex;
+                                ItemsFound.Add(itemString);
                             }
                             break;
-                        case PacketOpcode.APPRAISAL_INFO_EVENT:
-                            var appraisalMessage = CM_Examine.SetAppraiseInfo.read(messageDataReader);
-                            uint appraisalID = appraisalMessage.i_objid;
-                            if (AppraisalList.ContainsKey(appraisalID))
-                                AppraisalList[appraisalID] = appraisalMessage;
-                            else
-                                AppraisalList.Add(appraisalID, appraisalMessage);
-                            break;
-                        case PacketOpcode.VIEW_CONTENTS_EVENT:
-                            var viewContentsMessage = CM_Inventory.ViewContents.read(messageDataReader);
-                            uint containerId = viewContentsMessage.i_container;
-                            string getResultToAdd = AddToResults(viewContentsMessage, CreateObjectList, AppraisalList);
-                            // make sure our result is not empty and not already in the list!
-                            if (getResultToAdd != "" && results.IndexOf(getResultToAdd) == -1)
-                                results.Add(getResultToAdd);
-                            break;
-                        case PacketOpcode.Evt_Movement__UpdatePosition_ID:
-                            var positionMessage = CM_Movement.UpdatePosition.read(messageDataReader);
-                            var positionObjId = positionMessage.object_id;
-                            if (Positions.ContainsKey(positionObjId))
-                                Positions[positionObjId] = positionMessage.positionPack.position;
-                            else
-                                Positions.Add(positionObjId, positionMessage.positionPack.position);
-                            break;
-                        */
                     }
 
                 }
