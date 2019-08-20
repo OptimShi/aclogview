@@ -346,7 +346,7 @@ namespace aclogview
             var itemJSON = Newtonsoft.Json.JsonConvert.SerializeObject(itemProfile).Replace("\"", "\"\"");
 
             var wcid = itemProfile.pwd._wcid;
-            var name = itemProfile.pwd._name;
+            var name = itemProfile.pwd._name.m_buffer.Replace("\"", "\"\"");
             result = $"{wcid},\"{name}\",{theLogFilename},\"{appraiseJSON}\",\"{itemJSON}\"";
 
             return result;
