@@ -5,6 +5,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
@@ -711,6 +712,7 @@ namespace aclogview
         private void menuItem_OpenAsMessages_Click(object sender, EventArgs e)
         {
             openPcap(true);
+            miFindPlayerGUID.Enabled = true;
         }
 
         private void menuItem_EditPreviousHighlightedRow_Click(object sender, EventArgs e)
@@ -1657,6 +1659,69 @@ namespace aclogview
             {
                 var location = listView_CreatedObjects.PointToScreen(new Point(e.X, e.Y));
                 objectsContextMenu.Show(location);
+            }
+        }
+
+
+        private void miFindPlayerGUID_Click(object sender, EventArgs e)
+        {
+            if (packetListItems.Count > 0)
+                findPlayerGUID(pcapFilePath);
+        }
+
+        private void findPlayerGUID(string fileName)
+        {
+            int hits = 0;
+            int exceptions = 0;
+            bool searchAborted = false;
+            Dictionary<uint, int> possibleGUIDs = new Dictionary<uint, int>();
+
+            var records = PCapReader.LoadPcap(fileName, true, ref searchAborted, out isPcapng);
+            bool previousIsMoveToState = false;
+
+            foreach (PacketRecord record in records)
+            {
+                try
+                {
+                    if (record.data.Length <= 4)
+                        continue;
+
+                    using (BinaryReader fragDataReader = new BinaryReader(new MemoryStream(record.data)))
+                    {
+                        PacketOpcode opcode = Util.readOpcode(fragDataReader);
+                        switch (opcode)
+                        {
+                            case PacketOpcode.Evt_Movement__MoveToState_ID:
+                                previousIsMoveToState = true;
+                                break;
+                            case PacketOpcode.Evt_Movement__MovementEvent_ID:
+                                if (previousIsMoveToState)
+                                {
+                                    var movementEvtMsg = CM_Movement.MovementEvent.read(fragDataReader);
+                                    uint guid = movementEvtMsg.object_id;
+                                    if (possibleGUIDs.ContainsKey(guid))
+                                        possibleGUIDs[guid]++;
+                                    else
+                                        possibleGUIDs.Add(guid, 1);
+                                }
+                                break;
+                            default:
+                                previousIsMoveToState = false;
+                                break;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Do something with the exception maybe
+                    exceptions++;
+                }
+            }
+
+            if(possibleGUIDs.Count > 0)
+            {
+                var maxGUID = possibleGUIDs.FirstOrDefault(x => x.Value == possibleGUIDs.Values.Max()).Key;
+                MessageBox.Show("GUID is guessed as " + maxGUID.ToString("X8") + " with " + possibleGUIDs[maxGUID].ToString() + " occurances.");
             }
         }
     }

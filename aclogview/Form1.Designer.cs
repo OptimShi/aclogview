@@ -80,6 +80,8 @@ namespace aclogview {
             this.menuItem3 = new System.Windows.Forms.MenuItem();
             this.menuItem_gotoLine = new System.Windows.Forms.MenuItem();
             this.menuItem1 = new System.Windows.Forms.MenuItem();
+            this.miFindPlayerGUID = new System.Windows.Forms.MenuItem();
+            this.menuItem5 = new System.Windows.Forms.MenuItem();
             this.mnuItem_ToolFindOpcodeInFiles = new System.Windows.Forms.MenuItem();
             this.menuItem_ToolFindTextInFiles = new System.Windows.Forms.MenuItem();
             this.menuItem_ToolPcapScraper = new System.Windows.Forms.MenuItem();
@@ -393,7 +395,7 @@ namespace aclogview {
             this.copyTextMenuItem,
             this.copyHexMenuItem});
             this.hexContextMenu.Name = "hexContextMenu";
-            this.hexContextMenu.Size = new System.Drawing.Size(214, 48);
+            this.hexContextMenu.Size = new System.Drawing.Size(215, 48);
             this.hexContextMenu.Opening += new System.ComponentModel.CancelEventHandler(this.hexContextMenu_Opening);
             this.hexContextMenu.ItemClicked += new System.Windows.Forms.ToolStripItemClickedEventHandler(this.hexContextMenu_ItemClicked);
             // 
@@ -401,7 +403,7 @@ namespace aclogview {
             // 
             this.copyTextMenuItem.Name = "copyTextMenuItem";
             this.copyTextMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C)));
-            this.copyTextMenuItem.Size = new System.Drawing.Size(213, 22);
+            this.copyTextMenuItem.Size = new System.Drawing.Size(214, 22);
             this.copyTextMenuItem.Text = "Copy as &Text";
             // 
             // copyHexMenuItem
@@ -409,7 +411,7 @@ namespace aclogview {
             this.copyHexMenuItem.Name = "copyHexMenuItem";
             this.copyHexMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)(((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift) 
             | System.Windows.Forms.Keys.C)));
-            this.copyHexMenuItem.Size = new System.Drawing.Size(213, 22);
+            this.copyHexMenuItem.Size = new System.Drawing.Size(214, 22);
             this.copyHexMenuItem.Text = "Copy as &Hex";
             // 
             // tabProtocolDocs
@@ -622,6 +624,8 @@ namespace aclogview {
             // 
             this.menuItem1.Index = 2;
             this.menuItem1.MenuItems.AddRange(new System.Windows.Forms.MenuItem[] {
+            this.miFindPlayerGUID,
+            this.menuItem5,
             this.mnuItem_ToolFindOpcodeInFiles,
             this.menuItem_ToolFindTextInFiles,
             this.menuItem_ToolPcapScraper,
@@ -632,49 +636,62 @@ namespace aclogview {
             this.menuItem_Options});
             this.menuItem1.Text = "Tools";
             // 
+            // miFindPlayerGUID
+            // 
+            this.miFindPlayerGUID.Enabled = false;
+            this.miFindPlayerGUID.Index = 0;
+            this.miFindPlayerGUID.Shortcut = System.Windows.Forms.Shortcut.CtrlG;
+            this.miFindPlayerGUID.Text = "Find Player GUID";
+            this.miFindPlayerGUID.Click += new System.EventHandler(this.miFindPlayerGUID_Click);
+            // 
+            // menuItem5
+            // 
+            this.menuItem5.Index = 1;
+            this.menuItem5.Text = "-";
+            // 
             // mnuItem_ToolFindOpcodeInFiles
             // 
-            this.mnuItem_ToolFindOpcodeInFiles.Index = 0;
+            this.mnuItem_ToolFindOpcodeInFiles.Index = 2;
             this.mnuItem_ToolFindOpcodeInFiles.Text = "Find Opcode In Files";
             this.mnuItem_ToolFindOpcodeInFiles.Click += new System.EventHandler(this.menuItem_ToolFindOpcodeInFiles_Click);
             // 
             // menuItem_ToolFindTextInFiles
             // 
-            this.menuItem_ToolFindTextInFiles.Index = 1;
+            this.menuItem_ToolFindTextInFiles.Index = 3;
             this.menuItem_ToolFindTextInFiles.Text = "Find Text In Files";
             this.menuItem_ToolFindTextInFiles.Click += new System.EventHandler(this.menuItem_ToolFindTextInFiles_Click);
             // 
             // menuItem_ToolPcapScraper
             // 
-            this.menuItem_ToolPcapScraper.Index = 2;
+            this.menuItem_ToolPcapScraper.Index = 4;
             this.menuItem_ToolPcapScraper.Text = "Pcap Scraper";
             this.menuItem_ToolPcapScraper.Click += new System.EventHandler(this.menuItem_ToolPcapScraper_Click);
             // 
             // menuItem2
             // 
-            this.menuItem2.Index = 3;
+            this.menuItem2.Index = 5;
             this.menuItem2.Text = "-";
             // 
             // menuItem_ToolBad
             // 
-            this.menuItem_ToolBad.Index = 4;
+            this.menuItem_ToolBad.Index = 6;
             this.menuItem_ToolBad.Text = "Find Bad Parsers";
             this.menuItem_ToolBad.Click += new System.EventHandler(this.menuItem_ToolBad_Click);
             // 
             // mnuItem_ToolFragDatListTool
             // 
-            this.mnuItem_ToolFragDatListTool.Index = 5;
+            this.mnuItem_ToolFragDatListTool.Index = 7;
             this.mnuItem_ToolFragDatListTool.Text = "Frag Dat List Tool";
             this.mnuItem_ToolFragDatListTool.Click += new System.EventHandler(this.menuItem_ToolFragDatListTool_Click);
             // 
             // menuItem4
             // 
-            this.menuItem4.Index = 6;
+            this.menuItem4.Index = 8;
             this.menuItem4.Text = "-";
             // 
             // menuItem_Options
             // 
-            this.menuItem_Options.Index = 7;
+            this.menuItem_Options.Index = 9;
             this.menuItem_Options.Text = "Options";
             this.menuItem_Options.Click += new System.EventHandler(this.menuItem_Options_Click);
             // 
@@ -1127,6 +1144,8 @@ namespace aclogview {
         private System.Windows.Forms.ToolStripMenuItem iterationMenuItem;
         private System.Windows.Forms.ToolStripMenuItem serverPortMenuItem;
         private System.Windows.Forms.MenuItem menuItem_ToolPcapScraper;
+        private System.Windows.Forms.MenuItem miFindPlayerGUID;
+        private System.Windows.Forms.MenuItem menuItem5;
     }
 }
 
