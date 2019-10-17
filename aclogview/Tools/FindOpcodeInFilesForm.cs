@@ -105,13 +105,18 @@ namespace aclogview
 
         DateTime dt = DateTime.Now;
 
-        private string logFileName { get { return "D:\\Source\\VendorAppraisal-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
+        private string logFileName { get { return "D:\\Source\\RawLoot-Loot-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
+        private string containerFileName { get { return "D:\\Source\\RawLoot-Containers-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
                 theFile.WriteLine("wcid,name,logfile,item,appraisal");
+            }
+            using (StreamWriter theFile = new StreamWriter(containerFileName, false))
+            {
+                theFile.WriteLine("container,createObject,appraisal,loot items,loot wcid, loot name");
             }
         }
 
@@ -251,7 +256,8 @@ namespace aclogview
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted);
 
             Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList = new Dictionary<uint, CM_Examine.SetAppraiseInfo>(); // key is objectId
-            Dictionary<uint, CM_Vendor.ItemProfile> CreateObjectList = new Dictionary<uint, CM_Vendor.ItemProfile>(); // key is objectId
+            Dictionary<uint, CM_Physics.CreateObject> CreateObjectList = new Dictionary<uint, CM_Physics.CreateObject>(); // key is objectId
+            Dictionary<uint, CM_Inventory.ViewContents> ViewContentsList = new Dictionary<uint, CM_Inventory.ViewContents>(); // key is ContainerID
 
             // Store out text to dump in here... So just one write call per log
             List<string> results = new List<string>();
@@ -282,32 +288,30 @@ namespace aclogview
                         case PacketOpcode.APPRAISAL_INFO_EVENT:
                             var appraisalMessage = CM_Examine.SetAppraiseInfo.read(messageDataReader);
                             uint appraisalID = appraisalMessage.i_objid;
-                            if (CreateObjectList.ContainsKey(appraisalID))
+                            if (AppraisalList.ContainsKey(appraisalID))
+                                AppraisalList[appraisalID] = appraisalMessage;
+                            else
+                                AppraisalList.Add(appraisalID, appraisalMessage);
+                            break;
+                        case PacketOpcode.Evt_Physics__CreateObject_ID:
+                            var message = CM_Physics.CreateObject.read(messageDataReader);
+                            uint objectId = message.object_id;
+                            if (CreateObjectList.ContainsKey(objectId))
                             {
-                                var wcid = CreateObjectList[appraisalID].pwd._wcid;
-                                if(foundWCIDs.IndexOf(wcid) == -1)
-                                {
-                                    AddToResults(appraisalMessage, CreateObjectList[appraisalID], fileName);
-                                    results.Add(AddToResults(appraisalMessage, CreateObjectList[appraisalID], fileName));
-                                    foundWCIDs.Add(wcid);
-                                }
+                                CreateObjectList[objectId] = message;
+                            }
+                            else
+                            {
+                                CreateObjectList.Add(objectId, message);
                             }
                             break;
-                        case PacketOpcode.VENDOR_INFO_EVENT:
-                            var vendorInfoMessage = CM_Vendor.gmVendorUI.read(messageDataReader);
-                            foreach(var v in vendorInfoMessage.shopItemProfileList.list)
-                            {
-                                var guid = v.iid;
-                                var wcid = v.pwd._wcid;
-                                if (v.amount == 0x00FFFFFF) // Unlimited!
-                                {
-                                    // Check if we already have the item or not
-                                    if(foundWCIDs.IndexOf(wcid) == -1)
-                                    {
-                                        CreateObjectList.Add(guid, v);
-                                    }
-                                }
-                            }
+                        case PacketOpcode.VIEW_CONTENTS_EVENT:
+                            var viewContentsMessage = CM_Inventory.ViewContents.read(messageDataReader);
+                            uint containerId = viewContentsMessage.i_container;
+                            string getResultToAdd = AddToResults(viewContentsMessage, CreateObjectList, AppraisalList);
+                            // make sure our result is not empty and not already in the list!
+                            if (getResultToAdd != "" && results.IndexOf(getResultToAdd) == -1)
+                                results.Add(getResultToAdd);
                             break;
                     }
 
@@ -338,7 +342,7 @@ namespace aclogview
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
         }
 
-        private string AddToResults(CM_Examine.SetAppraiseInfo appraise, CM_Vendor.ItemProfile itemProfile, string theLogFilename)
+        private string OLD_AddToResults(CM_Examine.SetAppraiseInfo appraise, CM_Vendor.ItemProfile itemProfile, string theLogFilename)
         {
             string result = "";
 
@@ -348,6 +352,22 @@ namespace aclogview
             var wcid = itemProfile.pwd._wcid;
             var name = itemProfile.pwd._name.m_buffer.Replace("\"", "\"\"");
             result = $"{wcid},\"{name}\",{theLogFilename},\"{appraiseJSON}\",\"{itemJSON}\"";
+
+            return result;
+        }
+
+        private string AddToResults(CM_Inventory.ViewContents contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList)
+        {
+            string result = "";
+            var containerId = contents.i_container;
+            // We know what this container is...
+            if (CreateObjectList.ContainsKey(containerId))
+            {
+                var containerJSON = Newtonsoft.Json.JsonConvert.SerializeObject(CreateObjectList[containerId]).Replace("\"", "\"\"");
+                var containerGUID = containerId;
+                string containerName = CreateObjectList[containerId].wdesc._name.m_buffer;
+                uint containerWCID = CreateObjectList[containerId].wdesc._wcid;
+            }
 
             return result;
         }
