@@ -261,6 +261,7 @@ namespace aclogview
 
             // Store out text to dump in here... So just one write call per log
             List<string> results = new List<string>();
+            List<string> contents = new List<string>();
 
             foreach (PacketRecord record in records)
             {
@@ -312,6 +313,17 @@ namespace aclogview
                             // make sure our result is not empty and not already in the list!
                             if (getResultToAdd != "" && results.IndexOf(getResultToAdd) == -1)
                                 results.Add(getResultToAdd);
+
+                            var contentsJSON = Newtonsoft.Json.JsonConvert.SerializeObject(viewContentsMessage).Replace("\"", "\"\"");
+                            contents.Add(contentsJSON);
+                            break;
+                        case PacketOpcode.Evt_Physics__DeleteObject_ID:
+                            var delMessage = CM_Physics.DeleteObject.read(messageDataReader);
+                            var delObjectId = delMessage.object_id;
+                            if (CreateObjectList.ContainsKey(delObjectId))
+                                CreateObjectList.Remove(delObjectId);
+                            if (AppraisalList.ContainsKey(delObjectId))
+                                AppraisalList.Remove(delObjectId);
                             break;
                     }
 
@@ -342,42 +354,99 @@ namespace aclogview
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
         }
 
-        private string OLD_AddToResults(CM_Examine.SetAppraiseInfo appraise, CM_Vendor.ItemProfile itemProfile, string theLogFilename)
-        {
-            string result = "";
-
-            var appraiseJSON = Newtonsoft.Json.JsonConvert.SerializeObject(appraise).Replace("\"","\"\"");
-            var itemJSON = Newtonsoft.Json.JsonConvert.SerializeObject(itemProfile).Replace("\"", "\"\"");
-
-            var wcid = itemProfile.pwd._wcid;
-            var name = itemProfile.pwd._name.m_buffer.Replace("\"", "\"\"");
-            result = $"{wcid},\"{name}\",{theLogFilename},\"{appraiseJSON}\",\"{itemJSON}\"";
-
-            return result;
-        }
-
-        private string AddToResults(CM_Inventory.ViewContents contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList)
+        private string REAL_OLD_AddToResults(CM_Inventory.ViewContents contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList)
         {
             string result = "";
             var containerId = contents.i_container;
             // We know what this container is...
             if (CreateObjectList.ContainsKey(containerId))
             {
-                var containerJSON = Newtonsoft.Json.JsonConvert.SerializeObject(CreateObjectList[containerId]).Replace("\"", "\"\"");
-                var containerGUID = containerId;
-                string containerName = CreateObjectList[containerId].wdesc._name.m_buffer;
-                uint containerWCID = CreateObjectList[containerId].wdesc._wcid;
+                var newObj = CreateObjectList[containerId];
+                // Make sure the container doesn't have a container id (e.g. it's a Pack in a player's inventory...)
+                if ((newObj.wdesc.header & (uint)PublicWeenieDescPackHeader.PWD_Packed_ContainerID) == 0)
+                {
+                    string containerName = newObj.wdesc._name.m_buffer;
+                    containerName = containerName.Replace("Corpse of ", "");
+                    containerName = containerName.Replace("Treasure of ", "");
+
+                    string containerPos = "";
+                    if ((newObj.physicsdesc.bitfield & (uint)0x8000) != 0)
+                        containerPos = newObj.physicsdesc.pos.objcell_id.ToString("X8");
+
+                    //uint containerWCID = GetParentWeenieFromCorpse(newObj, CreateObjectList, Positions);
+                    string containerWCID;
+                    if (newObj.wdesc._wcid == 21) // Remove the "Corpse" weenies
+                        containerWCID = "";
+                    else
+                        containerWCID = newObj.wdesc._wcid.ToString();
+
+                    // Cycle through all the contents of the container
+                    for (int i = 0; i < contents.contents_list.list.Count; i++)
+                    {
+                        var thisContent = contents.contents_list.list[i];
+                        uint thisContentGUID = thisContent.m_iid;
+
+                        if (CreateObjectList.ContainsKey(thisContentGUID) && AppraisalList.ContainsKey(thisContentGUID))
+                        {
+                            var co = CreateObjectList[thisContentGUID];
+                            var app = AppraisalList[thisContentGUID];
+
+                            string lootName = co.wdesc._name.m_buffer;
+                            uint lootWCID = co.wdesc._wcid;
+                            uint value = co.wdesc._value;
+                            uint materialId = (uint)co.wdesc._material_type;
+                        }
+                    }
+                }
             }
 
             return result;
         }
 
+        private string AddToResults(CM_Inventory.ViewContents contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList)
+        {
+            if (CreateObjectList.Count == 0) return "";
+
+            string result = "";
+            var containerId = contents.i_container;
+            // We know what this container is...
+            if (CreateObjectList.ContainsKey(containerId))
+            {
+                var containerObj = CreateObjectList[containerId];
+                // Make sure the container doesn't have a container id (e.g. it's a Pack in a player's inventory...)
+                if ((containerObj.wdesc.header & (uint)PublicWeenieDescPackHeader.PWD_Packed_ContainerID) == 0)
+                {
+                    var containerJSON = Newtonsoft.Json.JsonConvert.SerializeObject(containerObj).Replace("\"", "\"\"");
+
+                    // Cycle through all the contents of the container
+                    for (int i = 0; i < contents.contents_list.list.Count; i++)
+                    {
+                        var thisContent = contents.contents_list.list[i];
+                        uint thisContentGUID = thisContent.m_iid;
+
+                        string coJSON = "";
+                        string appraiseJSON = "";
+                        if (CreateObjectList.ContainsKey(thisContentGUID))
+                        {
+                            var co = CreateObjectList[thisContentGUID];
+                            coJSON = Newtonsoft.Json.JsonConvert.SerializeObject(co).Replace("\"", "\"\"");
+                        }
+                        if (AppraisalList.ContainsKey(thisContentGUID))
+                        {
+                            var app = AppraisalList[thisContentGUID];
+                            appraiseJSON = Newtonsoft.Json.JsonConvert.SerializeObject(app).Replace("\"", "\"\"");
+                        }
+
+                        if(coJSON != "" || appraiseJSON != "")
+                            result += $"{coJSON},{appraiseJSON}\n";
+                    }
+                }
+            }
+            return result;
+        }
+
         private uint GetParentWeenieFromCorpse(CM_Physics.CreateObject co, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, Position> Positions)
         {
-
-
-
-
             return 0;
         }
 
