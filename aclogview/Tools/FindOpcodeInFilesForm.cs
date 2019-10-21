@@ -112,11 +112,11 @@ namespace aclogview
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
-                theFile.WriteLine("wcid,name,logfile,item,appraisal");
+                theFile.WriteLine("conatiner,loot object,loot appraisal");
             }
             using (StreamWriter theFile = new StreamWriter(containerFileName, false))
             {
-                theFile.WriteLine("container,createObject,appraisal,loot items,loot wcid, loot name");
+                theFile.WriteLine("container,contents");
             }
         }
 
@@ -128,6 +128,17 @@ namespace aclogview
             {
                 for (var i = 0; i < results.Count; i++)
                     theFile.WriteLine(results[i]);
+            }
+        }
+
+        private void SaveContentsToLogFile(List<string> contents)
+        {
+            if (contents.Count == 0) return;
+
+            using (StreamWriter theFile = new StreamWriter(containerFileName, true))
+            {
+                for (var i = 0; i < contents.Count; i++)
+                    theFile.WriteLine(contents[i]);
             }
         }
 
@@ -235,7 +246,6 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("Appraised Items Found: " + foundWCIDs.Count.ToString());
             }
         }
 
@@ -314,8 +324,18 @@ namespace aclogview
                             if (getResultToAdd != "" && results.IndexOf(getResultToAdd) == -1)
                                 results.Add(getResultToAdd);
 
-                            var contentsJSON = Newtonsoft.Json.JsonConvert.SerializeObject(viewContentsMessage).Replace("\"", "\"\"");
-                            contents.Add(contentsJSON);
+                            // Only log the contents if we know what it came from!
+                            if (CreateObjectList.ContainsKey(containerId))
+                            {
+                                var containerObj = CreateObjectList[containerId];
+                                // This elimintes containers within containers...e.g. player packs, storage, etc
+                                if ((containerObj.wdesc.header & (uint)PublicWeenieDescPackHeader.PWD_Packed_ContainerID) == 0)
+                                {
+                                    string containerJSON = Newtonsoft.Json.JsonConvert.SerializeObject(containerObj).Replace("\"", "\"\"");
+                                    var contentsJSON = Newtonsoft.Json.JsonConvert.SerializeObject(viewContentsMessage).Replace("\"", "\"\"");
+                                    contents.Add("\"" + containerJSON + "\",\"" + contentsJSON + "\"");
+                                }
+                            }
                             break;
                         case PacketOpcode.Evt_Physics__DeleteObject_ID:
                             var delMessage = CM_Physics.DeleteObject.read(messageDataReader);
@@ -347,6 +367,9 @@ namespace aclogview
 
             if(results.Count > 0)
                 SaveResultsToLogFile(results);
+
+            if (contents.Count > 0)
+                SaveContentsToLogFile(contents);
 
             Interlocked.Increment(ref filesProcessed);
 
@@ -438,7 +461,7 @@ namespace aclogview
                         }
 
                         if(coJSON != "" || appraiseJSON != "")
-                            result += $"{coJSON},{appraiseJSON}\n";
+                            result += $"\"{containerJSON}\",\"{coJSON}\",\"{appraiseJSON}\"\n";
                     }
                 }
             }
