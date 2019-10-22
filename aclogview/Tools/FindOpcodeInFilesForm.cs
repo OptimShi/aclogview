@@ -257,6 +257,8 @@ namespace aclogview
             return value;
         }
 
+        uint ViewContentsCounter = 1;
+
         private void ProcessFile(string fileName)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -272,6 +274,7 @@ namespace aclogview
             // Store out text to dump in here... So just one write call per log
             List<string> results = new List<string>();
             List<string> contents = new List<string>();
+
 
             foreach (PacketRecord record in records)
             {
@@ -319,10 +322,13 @@ namespace aclogview
                         case PacketOpcode.VIEW_CONTENTS_EVENT:
                             var viewContentsMessage = CM_Inventory.ViewContents.read(messageDataReader);
                             uint containerId = viewContentsMessage.i_container;
-                            string getResultToAdd = AddToResults(viewContentsMessage, CreateObjectList, AppraisalList);
+                            string getResultToAdd = AddToResults(viewContentsMessage, CreateObjectList, AppraisalList, ViewContentsCounter);
                             // make sure our result is not empty and not already in the list!
                             if (getResultToAdd != "" && results.IndexOf(getResultToAdd) == -1)
+                            {
                                 results.Add(getResultToAdd);
+                                ViewContentsCounter++;
+                            }
 
                             // Only log the contents if we know what it came from!
                             if (CreateObjectList.ContainsKey(containerId))
@@ -377,56 +383,7 @@ namespace aclogview
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
         }
 
-        private string REAL_OLD_AddToResults(CM_Inventory.ViewContents contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList)
-        {
-            string result = "";
-            var containerId = contents.i_container;
-            // We know what this container is...
-            if (CreateObjectList.ContainsKey(containerId))
-            {
-                var newObj = CreateObjectList[containerId];
-                // Make sure the container doesn't have a container id (e.g. it's a Pack in a player's inventory...)
-                if ((newObj.wdesc.header & (uint)PublicWeenieDescPackHeader.PWD_Packed_ContainerID) == 0)
-                {
-                    string containerName = newObj.wdesc._name.m_buffer;
-                    containerName = containerName.Replace("Corpse of ", "");
-                    containerName = containerName.Replace("Treasure of ", "");
-
-                    string containerPos = "";
-                    if ((newObj.physicsdesc.bitfield & (uint)0x8000) != 0)
-                        containerPos = newObj.physicsdesc.pos.objcell_id.ToString("X8");
-
-                    //uint containerWCID = GetParentWeenieFromCorpse(newObj, CreateObjectList, Positions);
-                    string containerWCID;
-                    if (newObj.wdesc._wcid == 21) // Remove the "Corpse" weenies
-                        containerWCID = "";
-                    else
-                        containerWCID = newObj.wdesc._wcid.ToString();
-
-                    // Cycle through all the contents of the container
-                    for (int i = 0; i < contents.contents_list.list.Count; i++)
-                    {
-                        var thisContent = contents.contents_list.list[i];
-                        uint thisContentGUID = thisContent.m_iid;
-
-                        if (CreateObjectList.ContainsKey(thisContentGUID) && AppraisalList.ContainsKey(thisContentGUID))
-                        {
-                            var co = CreateObjectList[thisContentGUID];
-                            var app = AppraisalList[thisContentGUID];
-
-                            string lootName = co.wdesc._name.m_buffer;
-                            uint lootWCID = co.wdesc._wcid;
-                            uint value = co.wdesc._value;
-                            uint materialId = (uint)co.wdesc._material_type;
-                        }
-                    }
-                }
-            }
-
-            return result;
-        }
-
-        private string AddToResults(CM_Inventory.ViewContents contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList)
+        private string AddToResults(CM_Inventory.ViewContents contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList, uint counter)
         {
             if (CreateObjectList.Count == 0) return "";
 
@@ -461,7 +418,7 @@ namespace aclogview
                         }
 
                         if(coJSON != "" || appraiseJSON != "")
-                            result += $"\"{containerJSON}\",\"{coJSON}\",\"{appraiseJSON}\"\n";
+                            result += $"{counter},\"{containerJSON}\",\"{coJSON}\",\"{appraiseJSON}\"\n";
                     }
                 }
             }
