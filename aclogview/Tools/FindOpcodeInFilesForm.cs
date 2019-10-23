@@ -112,11 +112,7 @@ namespace aclogview
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
-                theFile.WriteLine("conatiner,loot object,loot appraisal");
-            }
-            using (StreamWriter theFile = new StreamWriter(containerFileName, false))
-            {
-                theFile.WriteLine("container,contents");
+                theFile.WriteLine("counter,conatiner,loot object,loot appraisal");
             }
         }
 
@@ -128,17 +124,6 @@ namespace aclogview
             {
                 for (var i = 0; i < results.Count; i++)
                     theFile.WriteLine(results[i]);
-            }
-        }
-
-        private void SaveContentsToLogFile(List<string> contents)
-        {
-            if (contents.Count == 0) return;
-
-            using (StreamWriter theFile = new StreamWriter(containerFileName, true))
-            {
-                for (var i = 0; i < contents.Count; i++)
-                    theFile.WriteLine(contents[i]);
             }
         }
 
@@ -269,7 +254,7 @@ namespace aclogview
 
             Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList = new Dictionary<uint, CM_Examine.SetAppraiseInfo>(); // key is objectId
             Dictionary<uint, CM_Physics.CreateObject> CreateObjectList = new Dictionary<uint, CM_Physics.CreateObject>(); // key is objectId
-            Dictionary<uint, CM_Inventory.ViewContents> ViewContentsList = new Dictionary<uint, CM_Inventory.ViewContents>(); // key is ContainerID
+            List<CM_Inventory.ViewContents> ViewContentsList = new List<CM_Inventory.ViewContents>(); //
 
             // Store out text to dump in here... So just one write call per log
             List<string> results = new List<string>();
@@ -322,34 +307,21 @@ namespace aclogview
                         case PacketOpcode.VIEW_CONTENTS_EVENT:
                             var viewContentsMessage = CM_Inventory.ViewContents.read(messageDataReader);
                             uint containerId = viewContentsMessage.i_container;
-                            string getResultToAdd = AddToResults(viewContentsMessage, CreateObjectList, AppraisalList, ViewContentsCounter);
-                            // make sure our result is not empty and not already in the list!
-                            if (getResultToAdd != "" && results.IndexOf(getResultToAdd) == -1)
-                            {
-                                results.Add(getResultToAdd);
-                                ViewContentsCounter++;
-                            }
-
                             // Only log the contents if we know what it came from!
                             if (CreateObjectList.ContainsKey(containerId))
                             {
-                                var containerObj = CreateObjectList[containerId];
-                                // This elimintes containers within containers...e.g. player packs, storage, etc
-                                if ((containerObj.wdesc.header & (uint)PublicWeenieDescPackHeader.PWD_Packed_ContainerID) == 0)
-                                {
-                                    string containerJSON = Newtonsoft.Json.JsonConvert.SerializeObject(containerObj).Replace("\"", "\"\"");
-                                    var contentsJSON = Newtonsoft.Json.JsonConvert.SerializeObject(viewContentsMessage).Replace("\"", "\"\"");
-                                    contents.Add("\"" + containerJSON + "\",\"" + contentsJSON + "\"");
-                                }
+                                ViewContentsList.Add(viewContentsMessage);
                             }
                             break;
-                        case PacketOpcode.Evt_Physics__DeleteObject_ID:
-                            var delMessage = CM_Physics.DeleteObject.read(messageDataReader);
-                            var delObjectId = delMessage.object_id;
-                            if (CreateObjectList.ContainsKey(delObjectId))
-                                CreateObjectList.Remove(delObjectId);
-                            if (AppraisalList.ContainsKey(delObjectId))
-                                AppraisalList.Remove(delObjectId);
+                        case PacketOpcode.Evt_Physics__PlayerTeleport_ID:
+                        case PacketOpcode.CHARACTER_EXIT_GAME_EVENT:
+                            if (ViewContentsList.Count > 0)
+                            {
+                                ProcessResults(ViewContentsList, CreateObjectList, AppraisalList);
+                                ViewContentsList.Clear();
+                                CreateObjectList.Clear();
+                                AppraisalList.Clear();
+                            }
                             break;
                     }
 
@@ -363,6 +335,11 @@ namespace aclogview
                 }
             }
 
+            if (ViewContentsList.Count > 0)
+            {
+                ProcessResults(ViewContentsList, CreateObjectList, AppraisalList);
+            }
+
             watch.Stop();
             var elapsedMs = watch.ElapsedMilliseconds;
             if (watch.Elapsed.Minutes > 1)
@@ -371,16 +348,23 @@ namespace aclogview
                 richTextBox1.AppendText(outputLine + "\r\n");
             }
 
-            if(results.Count > 0)
-                SaveResultsToLogFile(results);
-
-            if (contents.Count > 0)
-                SaveContentsToLogFile(contents);
-
             Interlocked.Increment(ref filesProcessed);
 
 
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
+        }
+
+        private void ProcessResults(List<CM_Inventory.ViewContents> contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList)
+        {
+            List<string> results = new List<string>();
+            for(int i = 0; i<contents.Count; i++)
+            {
+                string result = AddToResults(contents[i], CreateObjectList, AppraisalList, ViewContentsCounter++);
+                results.Add(result);
+            }
+
+            if (results.Count > 0)
+                SaveResultsToLogFile(results);
         }
 
         private string AddToResults(CM_Inventory.ViewContents contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList, uint counter)
