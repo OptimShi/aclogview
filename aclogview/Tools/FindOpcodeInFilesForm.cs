@@ -98,32 +98,48 @@ namespace aclogview
         // val is MessageText+","+ChatMessageType of text
         //private Dictionary<string, string> Speech = new Dictionary<string, string>();
 
-        // key is [Name of Container] + "," + WCID + "," + [LootName]
+        // key is PosistionInfo,WCID,Name,ItemType
         // val is the number of hits
-        private List<uint> foundIIDs = new List<uint>();
-        private List<uint> foundWCIDs = new List<uint>();
+        private Dictionary<string, uint> Spawns = new Dictionary<string, uint>();
+        private Dictionary<string, uint> ConfirmedSpawns = new Dictionary<string, uint>();
 
         DateTime dt = DateTime.Now;
 
-        private string logFileName { get { return "D:\\Source\\RawLoot-Loot-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
-        private string containerFileName { get { return "D:\\Source\\RawLoot-Containers-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
+        private string logFileName { get { return "D:\\Source\\LandblockSpawns-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
+        private string confirmedLogFileName { get { return "D:\\Source\\LandblockSpawns-Confirmed-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
-                theFile.WriteLine("counter,conatiner,loot object,loot appraisal");
+                theFile.WriteLine("objcell,x,y,z,w,x,y,z,wcid,name,ItemType,counter");
+            }
+            using (StreamWriter theFile = new StreamWriter(confirmedLogFileName, false))
+            {
+                theFile.WriteLine("objcell,x,y,z,w,x,y,z,wcid,name,ItemType,counter");
             }
         }
 
-        private void SaveResultsToLogFile(List<string> results)
+        private void SaveResultsToLogFile()
         {
-            if (results.Count == 0) return;
+            if (Spawns.Count == 0) return;
 
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                for (var i = 0; i < results.Count; i++)
-                    theFile.WriteLine(results[i]);
+                //for (var i = 0; i < Spawns.Count; i++)
+                foreach (var e in Spawns)
+                {
+                    theFile.WriteLine(e.Key + "," + e.Value);
+                }
+            }
+
+            using (StreamWriter theFile = new StreamWriter(confirmedLogFileName, true))
+            {
+                //for (var i = 0; i < Spawns.Count; i++)
+                foreach (var e in ConfirmedSpawns)
+                {
+                    theFile.WriteLine(e.Key+ "," + e.Value);
+                }
             }
         }
 
@@ -221,6 +237,8 @@ namespace aclogview
                 }
                 catch { }
             }
+
+            SaveResultsToLogFile();
         }
 
         private void LogProgress(int progress, int total, string filename)
@@ -231,6 +249,9 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
+                theFile.WriteLine("-----------------");
+                theFile.WriteLine(ConfirmedSpawns.Count + " confirmed spawns.");
+                theFile.WriteLine(Spawns.Count + " unconfirmed spawns.");
             }
         }
 
@@ -242,8 +263,6 @@ namespace aclogview
             return value;
         }
 
-        uint ViewContentsCounter = 1;
-
         private void ProcessFile(string fileName)
         {
             var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -252,10 +271,8 @@ namespace aclogview
 
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted);
 
-            Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList = new Dictionary<uint, CM_Examine.SetAppraiseInfo>(); // key is objectId
             Dictionary<uint, CM_Physics.CreateObject> CreateObjectList = new Dictionary<uint, CM_Physics.CreateObject>(); // key is objectId
-            List<CM_Inventory.ViewContents> ViewContentsList = new List<CM_Inventory.ViewContents>(); //
-
+            
             // Store out text to dump in here... So just one write call per log
             List<string> results = new List<string>();
             List<string> contents = new List<string>();
@@ -284,47 +301,67 @@ namespace aclogview
                     // Store all the created weenies!
                     switch (opcode)
                     {
-                        case PacketOpcode.APPRAISAL_INFO_EVENT:
-                            var appraisalMessage = CM_Examine.SetAppraiseInfo.read(messageDataReader);
-                            uint appraisalID = appraisalMessage.i_objid;
-                            if (AppraisalList.ContainsKey(appraisalID))
-                                AppraisalList[appraisalID] = appraisalMessage;
-                            else
-                                AppraisalList.Add(appraisalID, appraisalMessage);
-                            break;
                         case PacketOpcode.Evt_Physics__CreateObject_ID:
                             var message = CM_Physics.CreateObject.read(messageDataReader);
                             uint objectId = message.object_id;
-                            if (CreateObjectList.ContainsKey(objectId))
+                            uint wcid = message.wdesc._wcid;
+                            var type = message.wdesc._type;
+                            // Filter only specific types of items...
+                            if (
+                                (
+                                    type == ITEM_TYPE.TYPE_CREATURE ||
+                                    type == ITEM_TYPE.TYPE_MISC ||
+                                    type == ITEM_TYPE.TYPE_CONTAINER ||
+                                    type == ITEM_TYPE.TYPE_PORTAL
+                                )
+                                && wcid != 1955 // GATEWAY, e.g. player gateway
+                                && wcid != 1 // Player
+                                && wcid != 21 // Corpse
+                                && message.wdesc._pet_owner == 0 // Summoned Pet -- IGNORE THESE
+                                ) 
                             {
-                                CreateObjectList[objectId] = message;
-                            }
-                            else
-                            {
-                                CreateObjectList.Add(objectId, message);
+                                string spawn = GetPositionString(message);
+                                if (Spawns.ContainsKey(spawn))
+                                {
+                                    Spawns[spawn]++;
+                                }
+                                else
+                                {
+                                    Spawns.Add(spawn, 1);
+                                }
+
+                                if (CreateObjectList.ContainsKey(objectId))
+                                {
+                                    CreateObjectList[objectId] = message;
+                                }
+                                else
+                                {
+                                    CreateObjectList.Add(objectId, message);
+                                }
                             }
                             break;
-                        case PacketOpcode.VIEW_CONTENTS_EVENT:
-                            var viewContentsMessage = CM_Inventory.ViewContents.read(messageDataReader);
-                            uint containerId = viewContentsMessage.i_container;
-                            // Only log the contents if we know what it came from!
-                            if (CreateObjectList.ContainsKey(containerId))
+                        case PacketOpcode.Evt_Physics__PlayScriptType_ID:
+                            var playScriptMessage = CM_Physics.PlayScriptType.read(messageDataReader);
+                            if(playScriptMessage.script_type == PScriptType.PS_Create)
                             {
-                                ViewContentsList.Add(viewContentsMessage);
-                            }
-                            break;
-                        case PacketOpcode.Evt_Physics__PlayerTeleport_ID:
-                        case PacketOpcode.CHARACTER_EXIT_GAME_EVENT:
-                            if (ViewContentsList.Count > 0)
-                            {
-                                ProcessResults(ViewContentsList, CreateObjectList, AppraisalList);
-                                ViewContentsList.Clear();
-                                CreateObjectList.Clear();
-                                AppraisalList.Clear();
+                                var playScriptID = playScriptMessage.object_id;
+                                if (CreateObjectList.ContainsKey(playScriptID))
+                                {
+                                    var item = CreateObjectList[playScriptID];
+                                    string confirmedSpawn = GetPositionString(item);
+                                    if (ConfirmedSpawns.ContainsKey(confirmedSpawn))
+                                    {
+                                        ConfirmedSpawns[confirmedSpawn]++;
+                                    }
+                                    else
+                                    {
+                                        ConfirmedSpawns.Add(confirmedSpawn, 1);
+                                    }
+
+                                }
                             }
                             break;
                     }
-
                 }
                 catch
                 {
@@ -333,11 +370,6 @@ namespace aclogview
 
                     Interlocked.Increment(ref totalExceptions);
                 }
-            }
-
-            if (ViewContentsList.Count > 0)
-            {
-                ProcessResults(ViewContentsList, CreateObjectList, AppraisalList);
             }
 
             watch.Stop();
@@ -354,64 +386,12 @@ namespace aclogview
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
         }
 
-        private void ProcessResults(List<CM_Inventory.ViewContents> contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList)
+        private string GetPositionString(CM_Physics.CreateObject co)
         {
-            List<string> results = new List<string>();
-            for(int i = 0; i<contents.Count; i++)
-            {
-                string result = AddToResults(contents[i], CreateObjectList, AppraisalList, ViewContentsCounter++);
-                results.Add(result);
-            }
-
-            if (results.Count > 0)
-                SaveResultsToLogFile(results);
-        }
-
-        private string AddToResults(CM_Inventory.ViewContents contents, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, CM_Examine.SetAppraiseInfo> AppraisalList, uint counter)
-        {
-            if (CreateObjectList.Count == 0) return "";
-
-            string result = "";
-            var containerId = contents.i_container;
-            // We know what this container is...
-            if (CreateObjectList.ContainsKey(containerId))
-            {
-                var containerObj = CreateObjectList[containerId];
-                // Make sure the container doesn't have a container id (e.g. it's a Pack in a player's inventory...)
-                if ((containerObj.wdesc.header & (uint)PublicWeenieDescPackHeader.PWD_Packed_ContainerID) == 0)
-                {
-                    var containerJSON = Newtonsoft.Json.JsonConvert.SerializeObject(containerObj).Replace("\"", "\"\"");
-
-                    // Cycle through all the contents of the container
-                    for (int i = 0; i < contents.contents_list.list.Count; i++)
-                    {
-                        var thisContent = contents.contents_list.list[i];
-                        uint thisContentGUID = thisContent.m_iid;
-
-                        string coJSON = "";
-                        string appraiseJSON = "";
-                        if (CreateObjectList.ContainsKey(thisContentGUID))
-                        {
-                            var co = CreateObjectList[thisContentGUID];
-                            coJSON = Newtonsoft.Json.JsonConvert.SerializeObject(co).Replace("\"", "\"\"");
-                        }
-                        if (AppraisalList.ContainsKey(thisContentGUID))
-                        {
-                            var app = AppraisalList[thisContentGUID];
-                            appraiseJSON = Newtonsoft.Json.JsonConvert.SerializeObject(app).Replace("\"", "\"\"");
-                        }
-
-                        if(coJSON != "" || appraiseJSON != "")
-                            result += $"{counter},\"{containerJSON}\",\"{coJSON}\",\"{appraiseJSON}\"\n";
-                    }
-                }
-            }
-            return result;
-        }
-
-        private uint GetParentWeenieFromCorpse(CM_Physics.CreateObject co, Dictionary<uint, CM_Physics.CreateObject> CreateObjectList, Dictionary<uint, Position> Positions)
-        {
-            return 0;
+            var pos = co.physicsdesc.pos;
+            string posString = $"{pos.objcell_id},{pos.frame.m_fOrigin.x},{pos.frame.m_fOrigin.y},{pos.frame.m_fOrigin.z},{pos.frame.qw},{pos.frame.qx},{pos.frame.qy},{pos.frame.qz},";
+            posString += $"{co.wdesc._wcid},\"{co.wdesc._name.m_buffer}\",{co.wdesc._type}";
+            return posString;
         }
 
         private void timer1_Tick(object sender, EventArgs e)
