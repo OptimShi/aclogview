@@ -36,6 +36,9 @@
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject />
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="CommandLine, Version=1.9.71.2, Culture=neutral, PublicKeyToken=de6f01bd326f8c32, processorArchitecture=MSIL">
       <HintPath>..\packages\CommandLineParser.1.9.71\lib\net45\CommandLine.dll</HintPath>
@@ -59,6 +62,7 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="ContextInfo.cs" />
+    <Compile Include="DerethDateTime.cs" />
     <Compile Include="Enum Helpers\PropertyInt.cs" />
     <Compile Include="GotoLine.cs">
       <SubType>Form</SubType>

@@ -93,30 +93,25 @@ namespace aclogview
         private readonly ConcurrentQueue<string> specialOutputHitsQueue = new ConcurrentQueue<string>();
 
         //private Dictionary<MaterialType, uint> Materials = new Dictionary<MaterialType, uint>();
-        // key is WCID+","+Name of the speaker
-        // val is MessageText+","+ChatMessageType of text
-        //private Dictionary<string, string> Speech = new Dictionary<string, string>();
+        // key is "{Guid},{WCID},{Name}
+        // val is Comma seperated values of all the other details...
+        private List<string> NPCs = new List<string>();
 
-        // key is [Name of Container] + "," + WCID + "," + [LootName]
-        // val is the number of hits
-        private Dictionary<string, uint> Loot = new Dictionary<string, uint>();
-
-        private string logFileName = "D:\\Source\\Loot.csv";
+        private string logFileName = "D:\\Source\\NPC-Appearance.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("Container WCID, Container Name,Loot WCID,Loot Name,Hits");
+                theFile.WriteLine("Guid,WCID,Name,HeadGfxObj,SkinColor,HairColor,EyeColor,EyeStrip,NoseStrip,MouthStrip");
         }
 
         private void SaveResultsToLogFile()
         {
+            ResetLogFile();
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                foreach (KeyValuePair<string, uint> entry in Loot) {
-                    theFile.Write(entry.Key + ",");
-                    theFile.Write(entry.Value);
-                    theFile.WriteLine();
+                for(var i = 0;i<NPCs.Count;i++){
+                    theFile.WriteLine(NPCs[i]);
                 }
             }
         }
@@ -211,7 +206,7 @@ namespace aclogview
 
                 progress++;
                 LogProgress(progress, filesToProcess.Count, currentFile);
-
+                SaveResultsToLogFile();
                 try
                 {
                     ProcessFile(currentFile);
@@ -228,7 +223,7 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("Loot Entries: " + Loot.Count.ToString());
+                theFile.WriteLine("NPC Entries: " + NPCs.Count.ToString());
             }
         }
 
@@ -242,20 +237,15 @@ namespace aclogview
 
         private void ProcessFile(string fileName)
         {
-            int hits = 0;
             int exceptions = 0;
 
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted);
 
-            Dictionary<uint, CM_Physics.CreateObject> items = new Dictionary<uint, CM_Physics.CreateObject>();
-
             string myPath = "D:\\Asheron's Call\\Log Files\\";
             string logFilenameVal = fileName.Replace(myPath, "");
 
-            // Key is the ObjectID
-            // Value is WCID + "," + Name
-            Dictionary<uint, string> Weenies = new Dictionary<uint, string>();
-            Dictionary<uint, uint> WCIDs = new Dictionary<uint, uint>(); // key is ObjectID, Value is WCID
+            // Key is the landblock. Values is a list of all the seen objcell ids
+            Dictionary<uint, List<uint>> Stabs = new Dictionary<uint, List<uint>>();
 
             foreach (PacketRecord record in records)
             {
@@ -277,49 +267,66 @@ namespace aclogview
 
                     PacketOpcode opcode = Util.readOpcode(messageDataReader);
 
-                    // Store all the created weenies!
-                    if(opcode == PacketOpcode.Evt_Physics__CreateObject_ID)
-                    {
-                        var message = CM_Physics.CreateObject.read(messageDataReader);
-                        uint wcid = message.wdesc._wcid;
-                        string name = message.wdesc._name.m_buffer;
-                        uint objectId = message.object_id;
+                    switch (opcode) {
+                        case PacketOpcode.Evt_Physics__CreateObject_ID:
+                            var msg = CM_Physics.CreateObject.read(messageDataReader);
 
-                        string val = wcid.ToString() + ",\"" + name + "\"";
-                        Weenies.Add(objectId, val);
-                        WCIDs.Add(objectId, wcid);
-                    }
+                            var guid = msg.object_id;
+                            var wcid = msg.wdesc._wcid;
+                            var name = msg.wdesc._name.m_buffer.Replace("\"", "\"\""); // escape the slashes for CSV output
+                            var itemtype = msg.wdesc._type;
 
-                    if(opcode == PacketOpcode.VIEW_CONTENTS_EVENT)
-                    {
-                        var message = CM_Inventory.ViewContents.read(messageDataReader);
-                        // Check if we know what this item is and it is a Corpse
-                        if (Weenies.ContainsKey(message.i_container) && WCIDs[message.i_container] == 21)
-                        {
-                            string container = Weenies[message.i_container];
+                            bool isVendor = ((msg.wdesc._bitfield & 512) != 0); // BF_VENDOR bitfield
 
-                            // key is [Name of Container] + "," + WCID + "," + [LootName]
-                            // val is the number of hits
-                            for(int i = 0; i<message.contents_list.list.Count; i++)
+                            if (itemtype == ITEM_TYPE.TYPE_CREATURE && wcid != 1 && wcid != 21 && (msg.wdesc._blipColor == 8 || isVendor))
                             {
-                                var item = message.contents_list.list[i];
-                                // We've captured the CreateObject message for this item
-                                if (Weenies.ContainsKey(item.m_iid))
+                                string baseData = $"{guid},{wcid},\"{name}\",";
+                                // Guid,WCID,Name,HeadGfxObj,SkinColor,HairColor,EyeColor,EyeStrip,NoseStrip,MouthStrip
+
+                                // get HeadGfxObj
+                                string headGfxObj = "";
+                                foreach (var o in msg.objdesc.apChanges)
                                 {
-                                    container = container.Replace("Corpse of ", "");
-                                    container = container.Replace("Treasure of ", "");
-                                    string key = container + "," + Weenies[item.m_iid] + "";
-                                    if (!Loot.ContainsKey(key))
+                                    if (o.part_index == 0x10)
                                     {
-                                        Loot.Add(key, 1);
-                                    }
-                                    else
-                                    {
-                                        Loot[key]++;
+                                        headGfxObj = o.part_id.ToString("X8");
+                                        break;
                                     }
                                 }
+
+                                string skinColor = "";
+                                string hairColor = "";
+                                string eyeColor = "";
+                                foreach (var s in msg.objdesc.subpalettes)
+                                {
+                                    if (s.offset == 0 && s.numcolors == 24)
+                                        skinColor = s.subID.ToString("X8");
+                                    if (s.offset == 24 && s.numcolors == 8)
+                                        hairColor = s.subID.ToString("X8");
+                                    if (s.offset == 32 && s.numcolors == 8)
+                                        eyeColor = s.subID.ToString("X8");
+                                }
+
+                                string eyeStrip = "";
+                                string noseStrip = "";
+                                string mouthStrip = "";
+                                foreach (var t in msg.objdesc.tmChanges)
+                                {
+                                    if (t.old_tex_id == 0x500024C)
+                                        eyeStrip = t.new_tex_id.ToString("X8");
+                                    if (t.old_tex_id == 0x50002F5)
+                                        noseStrip = t.new_tex_id.ToString("X8");
+                                    if (t.old_tex_id == 0x500025C)
+                                        mouthStrip = t.new_tex_id.ToString("X8");
+                                }
+
+                                if (skinColor != "" && hairColor != "" && eyeColor != "")
+                                {
+                                    string appearanceData = baseData + $"{headGfxObj},{skinColor},{hairColor},{eyeColor},{eyeStrip},{noseStrip},{mouthStrip}";
+                                    NPCs.Add(appearanceData);
+                                }
                             }
-                        }
+                            break;
                     }
                 }
                 catch
@@ -333,7 +340,28 @@ namespace aclogview
 
             Interlocked.Increment(ref filesProcessed);
 
-            items.Clear();
+            if(Stabs.Count > 0)
+            {
+                using (StreamWriter theFile = new StreamWriter(logFileName, true))
+                {
+                    foreach (KeyValuePair<uint, List<uint>> e in Stabs)
+                    {
+                        if (e.Value.Count > 0)
+                        {
+                            theFile.Write(e.Key.ToString("X8") + ",");
+                            theFile.Write(fileName + ",");
+                            for (var i = 0; i < e.Value.Count; i++)
+                            {
+                                theFile.Write(e.Value[i].ToString("X8") + ",");
+                            }
+                            theFile.WriteLine();
+                        }
+                    }
+                }
+            }
+
+            Stabs.Clear();
+
 
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
         }

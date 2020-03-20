@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -268,11 +268,11 @@ public class CTimeSyncHeader : COptionalHeader {
     public static uint mask = 0x1000000;
     public static uint flags = (uint)(OptionalHeaderFlags.ohfTimeSensitive | OptionalHeaderFlags.ohfShouldPiggyBack); // 24
 
-    public ulong m_time;
+    public long m_time;
 
     public static CTimeSyncHeader read(BinaryReader binaryReader) {
         CTimeSyncHeader newObj = new CTimeSyncHeader();
-        newObj.m_time = binaryReader.ReadUInt64();
+        newObj.m_time = binaryReader.ReadInt64();
         return newObj;
     }
 }

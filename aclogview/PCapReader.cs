@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -582,10 +582,12 @@ namespace aclogview
 
             if ((header_ & CTimeSyncHeader.mask) != 0)
             {
-                /*CTimeSyncHeader timeSyncHeader = */CTimeSyncHeader.read(packetReader);
+                // /*CTimeSyncHeader timeSyncHeader = */CTimeSyncHeader.read(packetReader);
+                CTimeSyncHeader timeSyncHeader = CTimeSyncHeader.read(packetReader);
                 if (packetHeadersStr.Length != 0)
                     packetHeadersStr.Append(" | ");
                 packetHeadersStr.Append("Time Sync");
+                packetHeadersStr.Append("-" + timeSyncHeader.m_time.ToString());
             }
 
             if ((header_ & CEchoRequestHeader.mask) != 0)
