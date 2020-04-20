@@ -101,12 +101,12 @@ namespace aclogview
         // val is the log filename
         private Dictionary<string, string> Speech = new Dictionary<string, string>();
 
-        private string logFileName = "D:\\Source\\Speech.csv";
+        private string logFileName = "D:\\Source\\TextBox.csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("WCID,Name,Text,Type");
+                theFile.WriteLine("Text,Type,Log Index, Log Filename");
         }
 
         private void SaveResultsToLogFile()
@@ -273,70 +273,18 @@ namespace aclogview
                     PacketOpcode opcode = Util.readOpcode(messageDataReader);
 
                     //////////
-                    if (opcode == PacketOpcode.Evt_Communication__HearDirectSpeech_ID) // 02BD
+                    if (opcode == PacketOpcode.Evt_Communication__TextboxString_ID) // F7E0
                     {
-                        var msg = CM_Communication.HearDirectSpeech.read(messageDataReader);
+                        var msg = CM_Communication.TextBoxString.read(messageDataReader);
                         // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
+                        eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
+                        if (chatType == eChatTypes.eTextTypeDefault)
                         {
-                            eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.MessageText.m_buffer + "\"," + chatType.ToString();
+                            string messageText = msg.MessageText.m_buffer.Replace("\"", "\"\""); // escape any quote marks
+                            string key = "\"" + messageText + "\"," + chatType.ToString();
+                            string value = record.index + "," + logFilenameVal;
                             if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
-                        }
-                    }
-
-                    //////////
-                    if (opcode == PacketOpcode.Evt_Communication__HearSpeech_ID) // 02BB
-                    {
-                        var msg = CM_Communication.HearSpeech.read(messageDataReader);
-                        // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
-                        {
-                            eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.MessageText.m_buffer + "\"," + chatType.ToString();
-                            if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
-                        }
-                    }
-
-                    //////////
-                    if (opcode == PacketOpcode.Evt_Communication__HearRangedSpeech_ID) // 02BC
-                    {
-                        var msg = CM_Communication.HearRangedSpeech.read(messageDataReader);
-                        // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
-                        {
-                            eChatTypes chatType = (eChatTypes)msg.ChatMessageType;
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.MessageText.m_buffer + "\"," + chatType.ToString();
-                            if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
-                        }
-                    }
-
-                    //// EMOTES ////
-                    if (opcode == PacketOpcode.Evt_Communication__HearEmote_ID) // 02BC
-                    {
-                        var msg = CM_Communication.HearEmote.read(messageDataReader);
-                        // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
-                        {
-                            string chatType = "Emote";
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.EmoteMessage.m_buffer + "\"," + chatType;
-                            if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
-                        }
-                    }
-                    if (opcode == PacketOpcode.Evt_Communication__HearSoulEmote_ID) // 02BC
-                    {
-                        var msg = CM_Communication.HearSoulEmote.read(messageDataReader);
-                        // This will filter out players...
-                        if (msg.SenderID > 0x50FFFFFF)
-                        {
-                            string chatType = "Emote";
-                            string key = "\"" + msg.SenderName.m_buffer + "\",\"" + msg.EmoteMessage.m_buffer + "\"," + chatType;
-                            if (!Speech.ContainsKey(key))
-                                Speech.Add(key, logFilenameVal);
+                                Speech.Add(key, value);
                         }
                     }
                 }
