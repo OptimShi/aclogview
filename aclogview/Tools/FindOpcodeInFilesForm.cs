@@ -24,31 +24,34 @@ namespace aclogview.Tools
             InitializeComponent();
         }
 
-        // key is [Name of the speaker]+","+MessageText+","+[ChatMessageType of text]
-        // val is the log filename
-        private Dictionary<string, string> Speech = new Dictionary<string, string>();
+        private Dictionary<string, uint> CreatedWCIDs = new Dictionary<string, uint>(); // key is "wcid,name", value is times found
+        private Dictionary<string, string> CreatedWCIDsLogs = new Dictionary<string, string>(); // key is "wcid,name", value is first log found in
+        private Dictionary<string, uint> AppraisedWCIDs = new Dictionary<string, uint>(); // key is "wcid,name", value is times found
+        private Dictionary<string, string> AppraisedWCIDsLogs = new Dictionary<string, string>(); // key is "wcid,name", value is first log found in
 
-        // contains a more full record than "Speech", including wcid, timestampes, etc, but Speech is still used to track if the item has been found already.
-        private Dictionary<string, string> SpeechDump = new Dictionary<string, string>();
-
-        private string logFileName = "D:\\Source\\Speech-" + DateTime.Today.ToString("yyyy-MM-dd") + ".csv";
+        private string logFileName = "D:\\Source\\WCIDs-" + DateTime.Today.ToString("yyyy-MM-dd") + ".csv";
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
-                theFile.WriteLine("WCID,Time,Name,Text,Type,Log");
+                theFile.WriteLine("WCID,Name,EventType,Hits,LogFile");
         }
 
         private void SaveResultsToLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                foreach (KeyValuePair<string, string> entry in SpeechDump)
+                foreach (KeyValuePair<string, uint> entry in CreatedWCIDs)
                 {
-                    theFile.Write(entry.Key + ",");
-                    theFile.Write(entry.Value);
-                    theFile.WriteLine();
+                    theFile.Write(entry.Key + ",CreateObject," + entry.Value.ToString() + ",");
+                    theFile.WriteLine(CreatedWCIDsLogs[entry.Key]);
                 }
+                foreach (KeyValuePair<string, uint> entry in AppraisedWCIDs)
+                {
+                    theFile.Write(entry.Key + ",AppraiseInfo," + entry.Value.ToString() + ",");
+                    theFile.WriteLine(AppraisedWCIDsLogs[entry.Key]);
+                }
+
             }
         }
 
@@ -231,19 +234,6 @@ namespace aclogview.Tools
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("Speech Entries: " + Speech.Count.ToString());
-            }
-        }
-
-        private class CreatedItem
-        {
-            public uint Wcid;
-            public string Name;
-
-            public CreatedItem(uint wcid, string name)
-            {
-                Wcid = wcid;
-                Name = name;
             }
         }
 
@@ -253,21 +243,17 @@ namespace aclogview.Tools
 
         private void ProcessFile(string fileName)
         {
-            int hits = 0;
             int exceptions = 0;
-            resetTimers();
             //var result = parser.ProcessFileRecords(currentFile, records, ref searchAborted, opCodeToSearchFor);
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted, out isPcapng);
-
-            Dictionary<uint, CreatedItem> items = new Dictionary<uint, CreatedItem>();
 
             string myPath = "D:\\Asheron's Call\\Log Files\\";
             string logFilenameVal = fileName.Replace(myPath, "");
 
-            uint trackingGuid = 0;
-            var eventsWithoutHit = 0;
-
             string quot = "\"";
+
+            Dictionary<uint, uint> createdObjects = new Dictionary<uint, uint>(); // key is guid, value is wcid
+            Dictionary<uint, string> createdObjectNames = new Dictionary<uint, string>(); // key is guid, value is name
 
             foreach (PacketRecord record in records)
             {
@@ -289,201 +275,71 @@ namespace aclogview.Tools
                     //////////
                     switch (opcode)
                     {
-                        case PacketOpcode.CHARACTER_ENTER_GAME_EVENT: // Reset/clear all of these references.
-                            items.Clear();
-                            resetTimers();
-                            eventsWithoutHit = 0;
+                        case PacketOpcode.PLAYER_DESCRIPTION_EVENT:
+                            createdObjects.Clear();
+                            createdObjectNames.Clear();
                             break;
-
                         case PacketOpcode.Evt_Physics__CreateObject_ID: // Stores the guid => wcid/name of all created items so we can reference it
-                            eventsWithoutHit = 0;
                             var createMsg = CM_Physics.CreateObject.read(messageDataReader);
-                            uint guid = createMsg.object_id;
                             uint wcid = createMsg.wdesc._wcid;
-                            CreatedItem item = new CreatedItem(wcid, createMsg.wdesc._name.m_buffer);
-                            if (items.ContainsKey(guid))
-                                items[guid] = item;
-                            else
-                                items.Add(guid, item);
-
-                            break;
-                        case PacketOpcode.Evt_Physics__DeleteObject_ID: // Remove the item from our CreatedItems list...
-                            eventsWithoutHit = 0;
-                            var deleteMsg = CM_Physics.DeleteObject.read(messageDataReader);
-                            uint delGuid = deleteMsg.object_id;
-                            if (items.ContainsKey(delGuid))
-                                items.Remove(delGuid);
-                            break;
-                        case PacketOpcode.Evt_Communication__HearDirectSpeech_ID: // 0x02BD
-                            eventsWithoutHit = 0;
-                            var hearDirectSpeechMsg = CM_Communication.HearDirectSpeech.read(messageDataReader);
-                            // This will filter out players...
-                            if (IsNotPlayer(hearDirectSpeechMsg.SenderID))
+                            // skip over player and corpse entries
+                            if (wcid != 1 && wcid != 21)
                             {
-                                eChatTypes chatType = (eChatTypes)hearDirectSpeechMsg.ChatMessageType;
-                                string key = "\"" + hearDirectSpeechMsg.SenderName.m_buffer.Replace(quot, quot + quot) + "\",\"" + hearDirectSpeechMsg.MessageText.m_buffer.Replace(quot, quot + quot) + "\"," + chatType.ToString();
-                                if (!Speech.ContainsKey(key))
-                                {
-                                    setTimers(record);
-                                    Speech.Add(key, logFilenameVal);
+                                uint guid = createMsg.object_id;
+                                string name = createMsg.wdesc._name.m_buffer;
+                                string key = wcid + ",\"" + name + "\"";
 
-                                    uint hearDirectSpeechWCID = 0;
-                                    if (items.ContainsKey(hearDirectSpeechMsg.SenderID))
-                                        hearDirectSpeechWCID = items[hearDirectSpeechMsg.SenderID].Wcid;
-                                    key = hearDirectSpeechWCID.ToString() + "," + currentTimer + "," + key;
-                                    SpeechDump.Add(key, logFilenameVal);
+                                createdObjects.Add(guid, wcid);
+                                createdObjectNames.Add(guid, name);
+
+                                if (!CreatedWCIDs.ContainsKey(key))
+                                {
+                                    CreatedWCIDs.Add(key, 1);
+                                    CreatedWCIDsLogs.Add(key, fileName);
+                                }
+                                else
+                                {
+                                    CreatedWCIDs[key] += 1;
                                 }
                             }
                             break;
-                        case PacketOpcode.Evt_Communication__HearSpeech_ID: // 02BB
-                            eventsWithoutHit = 0;
-                            var hearSpeechMsg = CM_Communication.HearSpeech.read(messageDataReader);
-                            // This will filter out players...
-                            if (IsNotPlayer(hearSpeechMsg.SenderID))
-                            {
-                                eChatTypes chatType = (eChatTypes)hearSpeechMsg.ChatMessageType;
-                                string key = "\"" + hearSpeechMsg.SenderName.m_buffer.Replace(quot, quot+quot) + "\",\"" + hearSpeechMsg.MessageText.m_buffer.Replace(quot, quot + quot) + "\"," + chatType.ToString();
-                                if (!Speech.ContainsKey(key))
-                                {
-                                    setTimers(record);
-                                    Speech.Add(key, logFilenameVal);
+                        case PacketOpcode.APPRAISAL_INFO_EVENT:
+                            var parsed = CM_Examine.SetAppraiseInfo.read(messageDataReader);
 
-                                    uint myWCID = 0;
-                                    if (items.ContainsKey(hearSpeechMsg.SenderID))
-                                        myWCID = items[hearSpeechMsg.SenderID].Wcid;
-                                    key = myWCID.ToString() + "," + currentTimer + "," + key;
-                                    SpeechDump.Add(key, logFilenameVal);
-                                }
-                            }
-                            break;
-                        case PacketOpcode.Evt_Communication__HearRangedSpeech_ID: // 02BC
-                            eventsWithoutHit = 0;
-                            var hearRangedMsg = CM_Communication.HearRangedSpeech.read(messageDataReader);
-                            // This will filter out players...
-                            if (IsNotPlayer(hearRangedMsg.SenderID))
+                            uint success = parsed.i_prof.success_flag;
+                            if (success > 0)
                             {
-                                eChatTypes chatType = (eChatTypes)hearRangedMsg.ChatMessageType;
-                                string key = "\"" + hearRangedMsg.SenderName.m_buffer.Replace("\"", "\"\"") + "\",\"" + hearRangedMsg.MessageText.m_buffer.Replace("\"", "\"\"") + "\"," + chatType.ToString();
-                                if (!Speech.ContainsKey(key))
+                                //uint wcid = parsed.i_prof._strStatsTable[]
+                                //string name = parsed.wdesc._name.ToString();
+                                uint guid = parsed.i_objid;
+                                if (createdObjects.ContainsKey(guid))
                                 {
-                                    setTimers(record);
-                                    Speech.Add(key, logFilenameVal);
-                                    uint myWCID = 0;
-                                    if (items.ContainsKey(hearRangedMsg.SenderID))
-                                        myWCID = items[hearRangedMsg.SenderID].Wcid;
-                                    key = myWCID.ToString() + "," + currentTimer + "," + key;
-                                    SpeechDump.Add(key, logFilenameVal);
-                                }
-                            }
-                            break;
-                        case PacketOpcode.Evt_Communication__HearEmote_ID: // 02BC
-                            eventsWithoutHit = 0;
-                            var hearEmoteMsg = CM_Communication.HearEmote.read(messageDataReader);
-                            // This will filter out players...
-                            if (IsNotPlayer(hearEmoteMsg.SenderID))
-                            {
-                                string chatType = "Emote";
-                                string key = "\"" + hearEmoteMsg.SenderName.m_buffer.Replace("\"", "\"\"") + "\",\"" + hearEmoteMsg.EmoteMessage.m_buffer.Replace("\"", "\"\"") + "\"," + chatType;
-                                if (!Speech.ContainsKey(key))
-                                {
-                                    setTimers(record);
-                                    Speech.Add(key, logFilenameVal);
-                                    uint myWCID = 0;
-                                    if (items.ContainsKey(hearEmoteMsg.SenderID))
-                                        myWCID = items[hearEmoteMsg.SenderID].Wcid;
-                                    key = myWCID.ToString() + "," + currentTimer + "," + key;
-                                    SpeechDump.Add(key, logFilenameVal);
-                                }
-                            }
-                            break;
-                        case PacketOpcode.Evt_Communication__HearSoulEmote_ID:
-                            eventsWithoutHit = 0;
-                            var heatSoulEmoteMsg = CM_Communication.HearSoulEmote.read(messageDataReader);
-                            // This will filter out players...
-                            if (IsNotPlayer(heatSoulEmoteMsg.SenderID))
-                            {
-                                string chatType = "SoulEmote";
-                                string key = "\"" + heatSoulEmoteMsg.SenderName.m_buffer.Replace("\"", "\"\"") + "\",\"" + heatSoulEmoteMsg.EmoteMessage.m_buffer.Replace("\"", "\"\"") + "\"," + chatType;
-                                if (!Speech.ContainsKey(key))
-                                {
-                                    Speech.Add(key, logFilenameVal);
+                                    uint _wcid = createdObjects[guid];
+                                    string name = createdObjectNames[guid];
+                                    string key = _wcid + ",\"" + name + "\"";
 
-                                    setTimers(record);
-                                    uint myWCID = 0;
-                                    if (items.ContainsKey(heatSoulEmoteMsg.SenderID))
-                                        myWCID = items[heatSoulEmoteMsg.SenderID].Wcid;
-                                    key = myWCID.ToString() + "," + currentTimer + "," + key;
-                                    SpeechDump.Add(key, logFilenameVal);
-                                }
-                            }
-                            break;
-                        case PacketOpcode.Evt_Inventory__GiveObjectRequest_ID:
-                            var useGiveObjectMsg = CM_Inventory.GiveObjectRequest.read(messageDataReader);
-                            setTimers(record);
-                            trackingGuid = useGiveObjectMsg.i_targetID;
-                            break;
-                        case PacketOpcode.Evt_Inventory__UseEvent_ID:
-                            var useEventMsg = CM_Inventory.UseEvent.read(messageDataReader);
-                            setTimers(record);
-                            trackingGuid = useEventMsg.i_object;
-                            break;
-                        case PacketOpcode.Evt_Movement__MovementEvent_ID:
-                            if (trackingGuid > 0)
-                            {
-                                eventsWithoutHit = 0;
-                                var movementEventMsg = CM_Movement.MovementEvent.read(messageDataReader);
-                                if (trackingGuid == movementEventMsg.object_id)
-                                {
-                                    string movement = "";
-
-                                    // has an "Interpreted Motion"
-                                    switch (movementEventMsg.movement_data.movementData_Unpack.movement_type)
+                                    if (!AppraisedWCIDs.ContainsKey(key))
                                     {
-                                        case MovementTypes.Type.Invalid:
-                                            if ((movementEventMsg.movement_data.movementData_Unpack.interpretedMotionState.bitfield & 2) != 0) // (uint)PackBitfield.forward_command
-                                                movement = movementEventMsg.movement_data.movementData_Unpack.style.ToString() + " - " + movementEventMsg.movement_data.movementData_Unpack.interpretedMotionState.forward_command.ToString();
-                                            break;
-                                        case MovementTypes.Type.MoveToObject:
-                                        case MovementTypes.Type.MoveToPosition:
-                                        case MovementTypes.Type.TurnToHeading:
-                                        case MovementTypes.Type.TurnToObject:
-                                            movement = movementEventMsg.movement_data.movementData_Unpack.style.ToString() + " - " + movementEventMsg.movement_data.movementData_Unpack.movement_type.ToString();
-                                            break;
-
+                                        AppraisedWCIDs.Add(key, 1);
+                                        AppraisedWCIDsLogs.Add(key, fileName);
                                     }
-
-                                    if (movement != "" && movement != "Motion_NonCombat - Motion_Off" && movement != "Motion_NonCombat - Motion_On")
+                                    else
                                     {
-                                        string chatType = "MovementEvent";
-
-                                        uint movementWCID = 0;
-                                        if (items.ContainsKey(movementEventMsg.object_id))
-                                        {
-                                            movementWCID = items[movementEventMsg.object_id].Wcid;
-                                            if (movementWCID != 1 && movementWCID != 21)
-                                            {
-                                                // Don't need to look up if we've already said this...
-                                                setTimers(record);
-                                                string movementName = items[movementEventMsg.object_id].Name.Replace("\"", "\"\"");
-                                                string key = "\"" + movementName + "\",\"" + movement + "\"," + chatType;
-                                                uint myWCID = movementWCID;
-                                                key = myWCID.ToString() + "," + currentTimer + "," + key;
-                                                SpeechDump.Add(key, logFilenameVal);
-                                            }
-
-                                        }
+                                        AppraisedWCIDs[key] += 1;
                                     }
                                 }
                             }
                             break;
-                        default:
-                            eventsWithoutHit++;
-                            if (eventsWithoutHit > 30)
+                        case PacketOpcode.Evt_Physics__DeleteObject_ID:
+                            var deleteMessage = CM_Physics.DeleteObject.read(messageDataReader);
+                            var deleteObjectId = deleteMessage.object_id;
+                            if (createdObjects.ContainsKey(deleteObjectId))
                             {
-                                resetTimers();
-                                trackingGuid = 0;
+                                createdObjects.Remove(deleteObjectId);
+                                createdObjectNames.Remove(deleteObjectId);
                             }
                             break;
+
                     }
 
                 }
@@ -498,60 +354,7 @@ namespace aclogview.Tools
 
             Interlocked.Increment(ref filesProcessed);
 
-            items.Clear();
-
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
         }
-
-        private void resetTimers()
-        {
-            startTimer = 0;
-            currentTimer = "0";
-        }
-
-        private void setTimers(PacketRecord record)
-        {
-            if (startTimer == 0)
-            {
-                startTimer = Convert.ToDouble(getTimestamp(record));
-                currentTimer = "0";
-            }
-            else
-            {
-                double myTimestamp = Convert.ToDouble(getTimestamp(record));
-                currentTimer = string.Format("{0:0.##}", myTimestamp - startTimer);
-            }
-        }
-
-        private string getTimestamp(PacketRecord record)
-        {
-            if (isPcapng)
-            {
-                long microseconds = record.tsHigh;
-                microseconds = (microseconds << 32) | record.tsLow;
-
-                if (Settings.Default.PacketsListviewTimeFormat == (byte)TimeFormat.LocalTime)
-                    return Utility.EpochTimeToLocalTime(microseconds);
-
-                var time = $"{microseconds / (decimal) 1000000:F6}";
-                return time;
-            }
-            else
-            {
-                if (Settings.Default.PacketsListviewTimeFormat == (byte)TimeFormat.LocalTime)
-                    return Utility.EpochTimeToLocalTime(record.tsSec, record.tsUsec);
-
-                return $"{record.tsSec}." + $"{record.tsUsec:D6}";
-            }
-        }
-
-        private bool IsNotPlayer(uint guid)
-        {
-            if (guid > 0x50000000 && guid < 0x50FFFFFF)
-                return false;
-
-            return true;
-        }
-
     }
 }
