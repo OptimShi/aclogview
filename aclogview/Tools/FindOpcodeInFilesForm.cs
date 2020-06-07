@@ -93,35 +93,41 @@ namespace aclogview
         private readonly ConcurrentDictionary<string, int> specialOutputHits = new ConcurrentDictionary<string, int>();
         private readonly ConcurrentQueue<string> specialOutputHitsQueue = new ConcurrentQueue<string>();
 
-        //private Dictionary<MaterialType, uint> Materials = new Dictionary<MaterialType, uint>();
-        // key is WCID+","+Name of the speaker
-        // val is MessageText+","+ChatMessageType of text
-        //private Dictionary<string, string> Speech = new Dictionary<string, string>();
+        // Key is GUID, Value is WCID
+        // private Dictionary<uint, uint> Vendors = new Dictionary<uint, uint>();
 
-        // key is [Creature],[Event Trigger],[Skill],[SkillDiff]
-        // val is the number of hits
-        private Dictionary<string, uint> Creatures = new Dictionary<string, uint>();
+        // Key is WCID, value is Name
+        private Dictionary<uint, string> VendorNames = new Dictionary<uint, string>();
+
+        // Key is WCID, value is list of items available for sale
+        private Dictionary<uint, List<uint>> VendorItems = new Dictionary<uint, List<uint>>();
 
         DateTime dt = DateTime.Now;
 
-        private string logFileName { get { return "D:\\Source\\CreatureSkills-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
+        private string logFileName { get { return "D:\\Source\\VendorInv-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
-                theFile.WriteLine("creature name,event trigger,skill,value");
+                theFile.WriteLine("vendor wcid, vendor name, item wcid");
             }
         }
 
         private void SaveResultsToLogFile()
         {
-            if (Creatures.Count == 0) return;
-
+            if (VendorItems.Count == 0) return;
+            ResetLogFile();
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
             {
-                foreach (var e in Creatures)
-                    theFile.WriteLine(e.Key + "," + e.Value);
+                foreach (var e in VendorItems)
+                {
+                    var header = e.Key + "," + VendorNames[e.Key] + ",";
+                    for(var i = 0; i < e.Value.Count; i++)
+                    {
+                        theFile.WriteLine(header + e.Value[i]);
+                    }
+                }
             }
         }
 
@@ -216,11 +222,10 @@ namespace aclogview
                 try
                 {
                     ProcessFile(currentFile);
+                    SaveResultsToLogFile();
                 }
                 catch { }
             }
-
-            SaveResultsToLogFile();
         }
 
         private void LogProgress(int progress, int total, string filename)
@@ -231,7 +236,7 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("Creature Entries: " + Creatures.Count.ToString());
+                theFile.WriteLine("Vendors: " + VendorItems.Count.ToString());
             }
         }
 
@@ -243,18 +248,12 @@ namespace aclogview
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted);
 
             Dictionary<uint, CM_Physics.CreateObject> CreateObjectList = new Dictionary<uint, CM_Physics.CreateObject>(); // key is objectId
-            CM_Communication.TextBoxString textboxMsg = new CM_Communication.TextBoxString();
-
-            // Store out text to dump in here... So just one write call per log
-            List<string> results = new List<string>();
 
             int packetCount = 0;
-            int skillIndex = -1;
-            int textboxIndex = -1;
 
             CM_Qualities.PrivateUpdateQualityEvent<STypeSkill, Skill> privUpdateSkill = new CM_Qualities.PrivateUpdateQualityEvent<STypeSkill, Skill>();
 
-
+            uint BF_VENDOR = (1 << 9);
             foreach (PacketRecord record in records)
             {
                 packetCount++;
@@ -279,64 +278,44 @@ namespace aclogview
                     // Store all the created weenies!
                     switch (opcode)
                     {
-                        case PacketOpcode.Evt_Communication__TextboxString_ID:
-                            // You have evaded XXXX, get the melee attack skill of the creature
-                            textboxMsg = CM_Communication.TextBoxString.read(messageDataReader);
-                            if(textboxMsg.MessageText.m_buffer.IndexOf("You resist ") != -1)
+                        case PacketOpcode.Evt_Physics__CreateObject_ID:
+                            var createMsg = CM_Physics.CreateObject.read(messageDataReader);
+                            if((createMsg.wdesc._bitfield & BF_VENDOR) != 0)
                             {
-                                textboxIndex = record.index;
+                                var guid = createMsg.object_id;
+                                if (CreateObjectList.ContainsKey(guid) == false)
+                                    CreateObjectList.Add(guid, createMsg);
                             }
                             break;
-                        case PacketOpcode.Evt_Qualities__PrivateUpdateSkill_ID:
-                            // You have evaded XXXX, get the melee attack skill of the creature
-                            privUpdateSkill = CM_Qualities.PrivateUpdateQualityEvent<STypeSkill, Skill>.read(opcode, messageDataReader);
-                            skillIndex = record.index;
-
-                            if (record.index < textboxIndex + 3) // make sure the event is within a small range of the event
+                        case PacketOpcode.VENDOR_INFO_EVENT:
+                            var vendorInfo = CM_Vendor.gmVendorUI.read(messageDataReader);
+                            var vendorGuid = vendorInfo.shopVendorID;
+                            if (CreateObjectList.ContainsKey(vendorGuid))
                             {
-                                string name = textboxMsg.MessageText.m_buffer.Replace("You resist the spell cast by ", "");
-                                string skill = privUpdateSkill.stype.ToString();
-                                uint value = privUpdateSkill.val._resistance_of_last_check;
+                                var wcid = CreateObjectList[vendorGuid].wdesc._wcid;
+                                var name = CreateObjectList[vendorGuid].wdesc._name.m_buffer;
+                                // Vendor has not already been handled...
+                                if(VendorItems.ContainsKey(wcid) == false)
+                                {
+                                    List<uint> items = new List<uint>();
+                                    for(var i = 0; i<vendorInfo.shopItemProfileList.list.Count;i++)
+                                    {
+                                        var item = vendorInfo.shopItemProfileList.list[i];
+                                        if(item.amount == 0x00FFFFFF) // item is unlimited
+                                        {
+                                            items.Add(item.pwd._wcid);
+                                        }
+                                    }
 
-                                string key = $"\"{name}\",Textbox Resist,{skill},{value}";
-                                if (Creatures.ContainsKey(key))
-                                    Creatures[key]++;
-                                else
-                                    Creatures.Add(key, 1);
+                                    if (items.Count > 0)
+                                    {
+                                        VendorItems.Add(wcid, items);
+                                        VendorNames.Add(wcid, name);
+                                    }
+                                }
                             }
                             break;
-                        case PacketOpcode.EVASION_DEFENDER_NOTIFICATION_EVENT:
-                            // You have evaded XXXX, get the melee attack skill of the creature
-                            if (record.index < skillIndex + 3) // make sure the event is within a small range of the event
-                            {
-                                var evasionDefenderMessage = CM_Combat.EvasionDefenderNotificationEvent.read(messageDataReader);
 
-                                string name = evasionDefenderMessage.attackers_name.m_buffer;
-                                string skill = privUpdateSkill.stype.ToString();
-                                uint value = privUpdateSkill.val._resistance_of_last_check;
-                                string key = $"\"{name}\",EVASION_DEFENDER_NOTIFICATION_EVENT,{skill},{value}";
-                                if (Creatures.ContainsKey(key))
-                                    Creatures[key]++;
-                                else
-                                    Creatures.Add(key, 1);
-                            }
-                            break;
-                        case PacketOpcode.ATTACKER_NOTIFICATION_EVENT:
-                            // You hit XXXX for N damage...
-                            if (record.index < skillIndex + 3) // make sure the event is within a small range of the event
-                            {
-                                var attackerMessage = CM_Combat.AttackerNotificationEvent.read(messageDataReader);
-
-                                string name = attackerMessage.defenders_name.m_buffer;
-                                string skill = privUpdateSkill.stype.ToString();
-                                uint value = privUpdateSkill.val._resistance_of_last_check;
-                                string key = $"\"{name}\",ATTACKER_NOTIFICATION_EVENT,{skill},{value}";
-                                if (Creatures.ContainsKey(key))
-                                    Creatures[key]++;
-                                else
-                                    Creatures.Add(key, 1);
-                            }
-                            break;
                     }
                 }
                 catch
