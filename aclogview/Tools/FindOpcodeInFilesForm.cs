@@ -14,6 +14,7 @@ using aclogview.Properties;
 using System.Text;
 using System.Diagnostics;
 using static CM_Physics.PublicWeenieDesc;
+using aclogview.Tools;
 
 namespace aclogview
 {
@@ -104,18 +105,25 @@ namespace aclogview
 
         DateTime dt = DateTime.Now;
 
-        private string logFileName { get { return "D:\\Source\\VendorInv-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
+        private string logFileName { get { return "D:\\Source\\GraveYard-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
-                theFile.WriteLine("vendor wcid, vendor name, item wcid");
+                theFile.WriteLine("Name,WCID,Hour,ObjCell,LogFile");
             }
         }
 
+        private void LogToFile(string line)
+        {
+            using (StreamWriter theFile = new StreamWriter(logFileName, true))
+                theFile.WriteLine(line);      
+
+        }
         private void SaveResultsToLogFile()
         {
+            return;
             if (VendorItems.Count == 0) return;
             ResetLogFile();
             using (StreamWriter theFile = new StreamWriter(logFileName, true))
@@ -253,6 +261,8 @@ namespace aclogview
 
             CM_Qualities.PrivateUpdateQualityEvent<STypeSkill, Skill> privUpdateSkill = new CM_Qualities.PrivateUpdateQualityEvent<STypeSkill, Skill>();
 
+            DerethDateTime.Hours currentTime;
+
             uint BF_VENDOR = (1 << 9);
             foreach (PacketRecord record in records)
             {
@@ -268,6 +278,7 @@ namespace aclogview
 
                 try
                 {
+                    
                     if (record.data.Length <= 4)
                         continue;
 
@@ -280,42 +291,15 @@ namespace aclogview
                     {
                         case PacketOpcode.Evt_Physics__CreateObject_ID:
                             var createMsg = CM_Physics.CreateObject.read(messageDataReader);
-                            if((createMsg.wdesc._bitfield & BF_VENDOR) != 0)
+                            if (InGraveyard(createMsg.physicsdesc.pos.objcell_id))
                             {
-                                var guid = createMsg.object_id;
-                                if (CreateObjectList.ContainsKey(guid) == false)
-                                    CreateObjectList.Add(guid, createMsg);
+                                var Hour = GetHourFromUnix(record.tsSec);
+                                var name = createMsg.wdesc._name.m_buffer;
+                                var wcid = createMsg.wdesc._wcid;
+                                var line = $"\"{name}\",{wcid},{Hour},{createMsg.physicsdesc.pos.objcell_id:X8},{fileName}";
+                                LogToFile(line);
                             }
                             break;
-                        case PacketOpcode.VENDOR_INFO_EVENT:
-                            var vendorInfo = CM_Vendor.gmVendorUI.read(messageDataReader);
-                            var vendorGuid = vendorInfo.shopVendorID;
-                            if (CreateObjectList.ContainsKey(vendorGuid))
-                            {
-                                var wcid = CreateObjectList[vendorGuid].wdesc._wcid;
-                                var name = CreateObjectList[vendorGuid].wdesc._name.m_buffer;
-                                // Vendor has not already been handled...
-                                if(VendorItems.ContainsKey(wcid) == false)
-                                {
-                                    List<uint> items = new List<uint>();
-                                    for(var i = 0; i<vendorInfo.shopItemProfileList.list.Count;i++)
-                                    {
-                                        var item = vendorInfo.shopItemProfileList.list[i];
-                                        if(item.amount == 0x00FFFFFF) // item is unlimited
-                                        {
-                                            items.Add(item.pwd._wcid);
-                                        }
-                                    }
-
-                                    if (items.Count > 0)
-                                    {
-                                        VendorItems.Add(wcid, items);
-                                        VendorNames.Add(wcid, name);
-                                    }
-                                }
-                            }
-                            break;
-
                     }
                 }
                 catch
@@ -339,6 +323,33 @@ namespace aclogview
 
 
             //processFileResults.Add(new ProcessFileResult() { FileName = fileName, Hits = hits, Exceptions = exceptions });
+        }
+
+        private bool InGraveyard(uint landblock)
+        {
+            // 0x482e
+            // 0x482d
+            var block = landblock >> 16;
+            if (block == 0x482e || block == 0x482d)
+                return true;
+
+            return false;
+        }
+
+
+        private DerethDateTime.Hours GetHourFromUnix(double time)
+        {
+            var epoch = new DateTime(1970, 1, 1, 0, 0, 0);//, DateTimeKind.);
+            epoch = epoch.AddSeconds(time - (60*60*2));
+            var DerethTime = DerethDateTime.ConvertRealWorldToLoreDateTime(epoch);
+            return DerethTime.HourName;
+
+        }
+        private DerethDateTime.Hours GetHour(Int64 time)
+        {
+            var myTime = new DateTime(time);
+            var DerethTime = DerethDateTime.ConvertRealWorldToLoreDateTime(myTime);
+            return DerethTime.HourName;
         }
 
         private void timer1_Tick(object sender, EventArgs e)

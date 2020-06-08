@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -464,152 +464,98 @@ namespace aclogview
             if ((header_ & CServerSwitchStructHeader.mask) != 0)
             {
                 /*CServerSwitchStruct serverSwitchStruct = */CServerSwitchStruct.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Server Switch");
             }
 
             if ((header_ & LogonServerAddrHeader.mask) != 0)
             {
                 /*sockaddr_in serverAddr = */sockaddr_in.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Logon Server Addr");
             }
 
             if ((header_ & CEmptyHeader1.mask) != 0)
             {
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Empty Header 1");
             }
 
             if ((header_ & CReferralStructHeader.mask) != 0)
             {
                 /*CReferralStruct referralStruct = */CReferralStruct.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Referral");
             }
 
             if ((header_ & NakHeader.mask) != 0)
             {
                 /*CSeqIDListHeader nakSeqIDs = */NakHeader.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Nak");
             }
 
             if ((header_ & EmptyAckHeader.mask) != 0)
             {
                 /*CSeqIDListHeader ackSeqIDs = */EmptyAckHeader.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Empty Ack");
             }
 
             if ((header_ & PakHeader.mask) != 0)
             {
                 /*PakHeader pakHeader = */PakHeader.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Pak");
             }
 
             if ((header_ & CEmptyHeader2.mask) != 0)
             {
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Empty Header 2");
             }
 
             if ((header_ & CLogonHeader.mask) != 0)
             {
                 CLogonHeader.HandshakeWireData handshakeData = CLogonHeader.HandshakeWireData.read(packetReader);
                 /*byte[] authData = */packetReader.ReadBytes((int)handshakeData.cbAuthData);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Logon");
             }
 
             if ((header_ & ULongHeader.mask) != 0)
             {
                 /*ULongHeader ulongHeader = */ULongHeader.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("ULong 1");
             }
 
             if ((header_ & CConnectHeader.mask) != 0)
             {
                 /*CConnectHeader.HandshakeWireData handshakeData = */CConnectHeader.HandshakeWireData.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Connect");
             }
 
             if ((header_ & ULongHeader2.mask) != 0)
             {
                 /*ULongHeader2 ulongHeader = */ULongHeader2.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("ULong 2");
             }
 
             if ((header_ & NetErrorHeader.mask) != 0)
             {
                 /*NetError netError = */NetError.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Net Error");
             }
 
             if ((header_ & NetErrorHeader_cs_DisconnectReceived.mask) != 0)
             {
                 /*NetError netError = */NetError.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Net Error Disconnect");
             }
 
             if ((header_ & CICMDCommandStructHeader.mask) != 0)
             {
                 /*CICMDCommandStruct icmdStruct = */CICMDCommandStruct.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("ICmd");
             }
 
             if ((header_ & CTimeSyncHeader.mask) != 0)
             {
-                /*CTimeSyncHeader timeSyncHeader = */CTimeSyncHeader.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Time Sync");
+                CTimeSyncHeader timeSyncHeader = CTimeSyncHeader.read(packetReader);
+                var timeSTr = timeSyncHeader.m_time.ToString();
+                packetHeadersStr.Clear();
+                packetHeadersStr.Append(timeSTr);// = timeSyncHeader.m_time.ToString().Append();
             }
 
             if ((header_ & CEchoRequestHeader.mask) != 0)
             {
                 /*CEchoRequestHeader echoRequestHeader = */CEchoRequestHeader.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Echo Request");
             }
 
             if ((header_ & CEchoResponseHeader.mask) != 0)
             {
                 /*CEchoResponseHeader.CEchoResponseHeaderWireData echoResponseData = */CEchoResponseHeader.CEchoResponseHeaderWireData.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Echo Response");
             }
 
             if ((header_ & CFlowStructHeader.mask) != 0)
             {
                 /*CFlowStruct flowStruct = */CFlowStruct.read(packetReader);
-                if (packetHeadersStr.Length != 0)
-                    packetHeadersStr.Append(" | ");
-                packetHeadersStr.Append("Flow");
             }
 
             return (int)(packetReader.BaseStream.Position - readStartPos);
