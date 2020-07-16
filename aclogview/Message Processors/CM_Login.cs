@@ -72,6 +72,12 @@ public class CM_Login : MessageProcessor
                     message.contributeToTreeView(outputTreeView);
                     break;
                 }
+            case PacketOpcode.Evt_DDD__Error_ID:
+                {
+                    DDD_ErrorMessage message = DDD_ErrorMessage.read(messageDataReader);
+                    message.contributeToTreeView(outputTreeView);
+                    break;
+                }
             default:
                 {
                     handled = false;
@@ -1181,6 +1187,36 @@ public class CM_Login : MessageProcessor
             rootNode.Nodes.Add("m_qdid.Type = " + m_qdid_Type);
             ContextInfo.AddToList(new ContextInfo { Length = 4 });
             rootNode.Nodes.Add("m_qdid.ID = " + Utility.FormatHex(m_qdid_Id));
+            ContextInfo.AddToList(new ContextInfo { Length = 4 });
+            treeView.Nodes.Add(rootNode);
+        }
+    }
+
+    public class DDD_ErrorMessage : Message
+    {
+        public uint m_qdid_Type; // QualifiedDataID
+        public uint m_qdid_Id; // QualifiedDataID
+        public uint m_eError;
+
+        public static DDD_ErrorMessage read(BinaryReader binaryReader)
+        {
+            DDD_ErrorMessage newObj = new DDD_ErrorMessage();
+            newObj.m_qdid_Type = binaryReader.ReadUInt32();
+            newObj.m_qdid_Id = binaryReader.ReadUInt32();
+            newObj.m_eError = binaryReader.ReadUInt32();
+            return newObj;
+        }
+
+        public override void contributeToTreeView(TreeView treeView)
+        {
+            TreeNode rootNode = new TreeNode(this.GetType().Name);
+            rootNode.Expand();
+
+            rootNode.Nodes.Add("m_qdid.Type = " + m_qdid_Type);
+            ContextInfo.AddToList(new ContextInfo { Length = 4 });
+            rootNode.Nodes.Add("m_qdid.ID = " + Utility.FormatHex(m_qdid_Id));
+            ContextInfo.AddToList(new ContextInfo { Length = 4 });
+            rootNode.Nodes.Add("m_eError.ID = " + m_eError);
             ContextInfo.AddToList(new ContextInfo { Length = 4 });
             treeView.Nodes.Add(rootNode);
         }
