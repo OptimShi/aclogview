@@ -486,7 +486,7 @@ namespace aclogview
 
                 if (loadedAsMessages)
                 {
-					using (BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data)))
+                    using (BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data)))
 					{
 						try
 						{

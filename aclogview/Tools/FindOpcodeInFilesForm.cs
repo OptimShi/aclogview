@@ -98,47 +98,31 @@ namespace aclogview
         // val is MessageText+","+ChatMessageType of text
         //private Dictionary<string, string> Speech = new Dictionary<string, string>();
 
-        // key is PosistionInfo,WCID,Name,ItemType
-        // val is the number of hits
-        private Dictionary<string, uint> Spawns = new Dictionary<string, uint>();
-        private Dictionary<string, uint> ConfirmedSpawns = new Dictionary<string, uint>();
+        private List<PacketOpcode> FoundOpcodes = new List<PacketOpcode>();
+        private List<string> OpcodeMatches = new List<string>();
 
         DateTime dt = DateTime.Now;
 
-        private string logFileName { get { return "D:\\Source\\LandblockSpawns-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
-        private string confirmedLogFileName { get { return "D:\\Source\\LandblockSpawns-Confirmed-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
+        private string logFileName { get { return "D:\\Source\\Opcodes-" + dt.ToString("yyyy-MM-dd") + ".csv"; } }
 
         private void ResetLogFile()
         {
             using (StreamWriter theFile = new StreamWriter(logFileName, false))
             {
-                theFile.WriteLine("objcell,x,y,z,w,x,y,z,wcid,name,ItemType,counter");
-            }
-            using (StreamWriter theFile = new StreamWriter(confirmedLogFileName, false))
-            {
-                theFile.WriteLine("objcell,x,y,z,w,x,y,z,wcid,name,ItemType,counter");
+                theFile.WriteLine("OpCode,OpCode Hex,filename,Event");
             }
         }
 
         private void SaveResultsToLogFile()
         {
-            if (Spawns.Count == 0) return;
-
-            using (StreamWriter theFile = new StreamWriter(logFileName, true))
-            {
-                //for (var i = 0; i < Spawns.Count; i++)
-                foreach (var e in Spawns)
+            if(OpcodeMatches.Count > 0){
+                using (StreamWriter theFile = new StreamWriter(logFileName, true))
                 {
-                    theFile.WriteLine(e.Key + "," + e.Value);
-                }
-            }
-
-            using (StreamWriter theFile = new StreamWriter(confirmedLogFileName, true))
-            {
-                //for (var i = 0; i < Spawns.Count; i++)
-                foreach (var e in ConfirmedSpawns)
-                {
-                    theFile.WriteLine(e.Key+ "," + e.Value);
+                    for (var i = 0; i < OpcodeMatches.Count; i++)
+                    {
+                        theFile.WriteLine(OpcodeMatches[i]);
+                    }
+                    OpcodeMatches.Clear();
                 }
             }
         }
@@ -230,7 +214,7 @@ namespace aclogview
 
                 progress++;
                 LogProgress(progress, filesToProcess.Count, currentFile);
-
+                SaveResultsToLogFile();
                 try
                 {
                     ProcessFile(currentFile);
@@ -249,9 +233,9 @@ namespace aclogview
                 decimal percentage = (decimal)progress / total;
                 theFile.WriteLine(progress.ToString() + " of " + total.ToString() + " - " + percentage.ToString("0.00%"));
                 theFile.WriteLine(filename);
-                theFile.WriteLine("-----------------");
-                theFile.WriteLine(ConfirmedSpawns.Count + " confirmed spawns.");
-                theFile.WriteLine(Spawns.Count + " unconfirmed spawns.");
+                theFile.WriteLine("--------------");
+                float percentCodes = (float)FoundOpcodes.Count / 577f;
+                theFile.WriteLine("Found opcodes: " + FoundOpcodes.Count.ToString() + " - " + percentCodes.ToString("0.00%"));
             }
         }
 
@@ -270,16 +254,10 @@ namespace aclogview
             int exceptions = 0;
 
             var records = PCapReader.LoadPcap(fileName, true, ref searchAborted);
-
-            Dictionary<uint, CM_Physics.CreateObject> CreateObjectList = new Dictionary<uint, CM_Physics.CreateObject>(); // key is objectId
-            
-            // Store out text to dump in here... So just one write call per log
-            List<string> results = new List<string>();
-            List<string> contents = new List<string>();
-
-
+            var idx = -1;
             foreach (PacketRecord record in records)
             {
+                idx++;
                 if (searchAborted || Disposing || IsDisposed)
                     return;
 
@@ -291,76 +269,17 @@ namespace aclogview
 
                 try
                 {
-                    if (record.data.Length <= 4)
-                        continue;
+                    //if (record.data.Length <= 4)
+                    //    continue;
 
                     BinaryReader messageDataReader = new BinaryReader(new MemoryStream(record.data));
-
                     PacketOpcode opcode = Util.readOpcode(messageDataReader);
-
-                    // Store all the created weenies!
-                    switch (opcode)
+                    if (FoundOpcodes.IndexOf(opcode) == -1)
                     {
-                        case PacketOpcode.Evt_Physics__CreateObject_ID:
-                            var message = CM_Physics.CreateObject.read(messageDataReader);
-                            uint objectId = message.object_id;
-                            uint wcid = message.wdesc._wcid;
-                            var type = message.wdesc._type;
-                            // Filter only specific types of items...
-                            if (
-                                (
-                                    type == ITEM_TYPE.TYPE_CREATURE ||
-                                    type == ITEM_TYPE.TYPE_MISC ||
-                                    type == ITEM_TYPE.TYPE_CONTAINER ||
-                                    type == ITEM_TYPE.TYPE_PORTAL
-                                )
-                                && wcid != 1955 // GATEWAY, e.g. player gateway
-                                && wcid != 1 // Player
-                                && wcid != 21 // Corpse
-                                && message.wdesc._pet_owner == 0 // Summoned Pet -- IGNORE THESE
-                                ) 
-                            {
-                                string spawn = GetPositionString(message);
-                                if (Spawns.ContainsKey(spawn))
-                                {
-                                    Spawns[spawn]++;
-                                }
-                                else
-                                {
-                                    Spawns.Add(spawn, 1);
-                                }
-
-                                if (CreateObjectList.ContainsKey(objectId))
-                                {
-                                    CreateObjectList[objectId] = message;
-                                }
-                                else
-                                {
-                                    CreateObjectList.Add(objectId, message);
-                                }
-                            }
-                            break;
-                        case PacketOpcode.Evt_Physics__PlayScriptType_ID:
-                            var playScriptMessage = CM_Physics.PlayScriptType.read(messageDataReader);
-                            if(playScriptMessage.script_type == PScriptType.PS_Create)
-                            {
-                                var playScriptID = playScriptMessage.object_id;
-                                if (CreateObjectList.ContainsKey(playScriptID))
-                                {
-                                    var item = CreateObjectList[playScriptID];
-                                    string confirmedSpawn = GetPositionString(item);
-                                    if (ConfirmedSpawns.ContainsKey(confirmedSpawn))
-                                    {
-                                        ConfirmedSpawns[confirmedSpawn]++;
-                                    }
-                                    else
-                                    {
-                                        ConfirmedSpawns.Add(confirmedSpawn, 1);
-                                    }
-
-                                }
-                            }
-                            break;
+                        ushort decOpcode = (ushort)opcode;
+                        string opcodeMsg = $"{opcode},{decOpcode:X4},{fileName},{idx}";
+                        FoundOpcodes.Add(opcode);
+                        OpcodeMatches.Add(opcodeMsg);
                     }
                 }
                 catch
@@ -389,8 +308,20 @@ namespace aclogview
         private string GetPositionString(CM_Physics.CreateObject co)
         {
             var pos = co.physicsdesc.pos;
-            string posString = $"{pos.objcell_id},{pos.frame.m_fOrigin.x},{pos.frame.m_fOrigin.y},{pos.frame.m_fOrigin.z},{pos.frame.qw},{pos.frame.qx},{pos.frame.qy},{pos.frame.qz},";
-            posString += $"{co.wdesc._wcid},\"{co.wdesc._name.m_buffer}\",{co.wdesc._type}";
+            string posString = "";
+            if (pos.frame.m_fOrigin != null)
+            {
+                posString = $"{pos.objcell_id},{pos.frame.m_fOrigin.x},{pos.frame.m_fOrigin.y},{pos.frame.m_fOrigin.z},{pos.frame.qw},{pos.frame.qx},{pos.frame.qy},{pos.frame.qz},";
+                posString += $"{co.wdesc._wcid},\"{co.wdesc._name.m_buffer}\",{co.wdesc._type}";
+                if (co.physicsdesc.movement_buffer != null)
+                {
+                    var stance = co.physicsdesc.movement_buffer.style;
+                    posString += $",{stance}";
+                }
+                else
+                    posString += ",nullStance";
+
+            }
             return posString;
         }
 
